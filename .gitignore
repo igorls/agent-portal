@@ -1,0 +1,23 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Node / Angular
+node_modules/
+/ui/dist/
+/ui/.angular/
+*.log
+
+# Tauri
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Generated TS bindings are committed (CI checks drift) — do NOT ignore ui/src/app/core/ipc/gen
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# App-local scratch
+/app-icon.png

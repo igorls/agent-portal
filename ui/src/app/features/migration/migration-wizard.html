@@ -1,0 +1,146 @@
+<div class="backdrop" (click)="close()"></div>
+<div class="wizard" role="dialog">
+  <header>
+    <h2>
+      Migrate to <span class="target">{{ request().targetLabel }}</span>
+    </h2>
+    <button class="close" (click)="close()">✕</button>
+  </header>
+
+  <div class="from">
+    from <strong>{{ request().source.agentId }}</strong> ·
+    {{ request().source.title ?? request().source.nativeId.slice(0, 8) }}
+  </div>
+
+  @switch (stage()) {
+    @case ('choose') {
+      <div class="pane modes">
+        <button class="mode-card" (click)="choose('native')">
+          <div class="mode-head"><span class="badge native">native</span></div>
+          <div class="mode-title">Convert the session</div>
+          <p>Write a resumable session so {{ request().targetLabel }} continues with the full history.</p>
+        </button>
+        <button class="mode-card" (click)="choose('brief')">
+          <div class="mode-head"><span class="badge brief">brief</span></div>
+          <div class="mode-title">Handoff brief</div>
+          <p>Write a summary into the workspace and start a fresh session pointed at it.</p>
+        </button>
+      </div>
+    }
+
+    @case ('planning') {
+      <div class="pane center"><span class="spinner"></span>
+        {{ mode() === 'brief' ? 'Building handoff brief…' : 'Analyzing session…' }}
+      </div>
+    }
+
+    @case ('review') {
+      @if (report(); as r) {
+        <div class="pane">
+          @if (r.kind === 'native') {
+            <div class="stat-row">
+              <div class="stat"><span class="n">{{ r.turnCount }}</span><span class="l">turns</span></div>
+              <div class="stat">
+                <span class="n">{{ r.unansweredToolCalls }}</span><span class="l">unanswered calls</span>
+              </div>
+              <div class="stat mode"><span class="badge native">native</span></div>
+            </div>
+
+            <h3>Content</h3>
+            <div class="census">
+              @for (row of censusRows(); track row.label) {
+                <span class="cblock">{{ row.value }} {{ row.label }}</span>
+              }
+            </div>
+
+            @if (r.predictedLosses.length > 0) {
+              <h3>Will not transfer</h3>
+              <ul class="losses">
+                @for (loss of r.predictedLosses; track $index) {
+                  <li><span class="code">{{ loss.code }}</span> {{ loss.detail }}</li>
+                }
+              </ul>
+            }
+
+            <h3>Target</h3>
+            <code class="target-path">{{ r.targetPathHint }}</code>
+            <code class="resume">{{ r.resumePreview }}</code>
+          } @else {
+            <div class="brief-toolbar">
+              <span class="badge brief">brief</span>
+              @if (ollama()?.defaultPresent) {
+                <label class="enhance">
+                  <input type="checkbox" [checked]="enhance()" (change)="toggleEnhance()" />
+                  polish with local model
+                  <span class="model mono">{{ ollama()?.defaultModel }}</span>
+                  @if (r.briefEnhanced) { <span class="on-tag">on</span> }
+                </label>
+              } @else {
+                <span class="no-ollama">Ollama not detected — deterministic brief</span>
+              }
+            </div>
+
+            <div class="brief-preview">{{ r.briefPreview }}</div>
+
+            <h3>Then launch</h3>
+            <code class="resume">{{ r.resumePreview }}</code>
+          }
+        </div>
+
+        <footer>
+          <button class="ghost" (click)="close()">Cancel</button>
+          <button class="primary" (click)="execute()">
+            {{ mode() === 'brief' ? 'Write brief' : 'Migrate' }}
+          </button>
+        </footer>
+      }
+    }
+
+    @case ('executing') {
+      <div class="pane center"><span class="spinner"></span>
+        {{ mode() === 'brief' ? 'Writing handoff…' : 'Writing session & verifying…' }}
+      </div>
+    }
+
+    @case ('done') {
+      @if (result(); as res) {
+        <div class="pane">
+          @if (res.verify; as v) {
+            <div class="success">
+              <span class="check">✓</span>
+              <div>
+                <div class="verify-grade">Verified: {{ v.grade }}</div>
+                <div class="verify-sub">{{ v.comparedBlocks }} content blocks matched</div>
+              </div>
+            </div>
+          } @else {
+            <div class="success">
+              <span class="check">✓</span>
+              <div>
+                <div class="verify-grade">Handoff written</div>
+                <div class="verify-sub mono">{{ res.targetPath }}</div>
+              </div>
+            </div>
+          }
+          <h3>{{ res.kind === 'brief' ? 'Launch command' : 'Resume command' }}</h3>
+          <code class="resume">{{ res.resumeCommand.program }} {{ res.resumeCommand.args.join(' ') }}</code>
+        </div>
+        <footer>
+          <button class="ghost" (click)="close()">Done</button>
+          <button class="primary" (click)="launch()" [disabled]="launching()">
+            {{ launching() ? 'Opening…' : '▶ Open in terminal' }}
+          </button>
+        </footer>
+      }
+    }
+
+    @case ('error') {
+      <div class="pane">
+        <div class="error-box">{{ error() }}</div>
+      </div>
+      <footer>
+        <button class="ghost" (click)="close()">Close</button>
+      </footer>
+    }
+  }
+</div>

@@ -1,0 +1,17 @@
+[package]
+name = "portal-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+ts-rs = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+# Blocking HTTP for the optional local-Ollama brief enrichment. rustls (not
+# native-tls) so there's no OpenSSL build dependency; only ever talks to
+# localhost, but keeps the dependency light and cross-platform.
+ureq = { version = "2", features = ["json"] }

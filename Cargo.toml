@@ -1,0 +1,22 @@
+[workspace]
+resolver = "2"
+members = ["crates/portal-core", "crates/portal-adapters", "src-tauri"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/igorls/agent-portal"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+ts-rs = { version = "10", features = ["serde-json-impl", "chrono-impl"] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

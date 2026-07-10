@@ -1,0 +1,154 @@
+/* ===========================================================================
+   Agent Portal — global design system
+
+   Identity: a dispatch board for a fleet of coding agents. The pervasive
+   signal is a human/machine split — IBM Plex Sans for everything a person
+   controls (names, titles, actions), IBM Plex Mono for everything a machine
+   emitted (ids, paths, models, tokens, commands). One product accent
+   (periwinkle) marks the app's own actions, kept distinct from the agents'
+   identity colors so "app" and "agent" never blur.
+   =========================================================================== */
+
+@font-face {
+  font-family: 'Plex Sans';
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/plex-sans-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plex Sans';
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/plex-sans-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plex Sans';
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/plex-sans-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plex Mono';
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/plex-mono-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plex Mono';
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/plex-mono-500.woff2') format('woff2');
+}
+
+:root {
+  /* surfaces — a graphite instrument panel, stepping up in luminance */
+  --bg-base: #0e1016;
+  --bg-panel: #14171f;
+  --bg-card: #191d28;
+  --bg-card-hover: #202536;
+  --bg-inset: #0b0d12;
+
+  /* hairlines */
+  --line: rgb(255 255 255 / 6%);
+  --line-strong: rgb(255 255 255 / 11%);
+
+  /* text */
+  --text-hi: #eaedf4;
+  --text-mid: #98a1b3;
+  --text-lo: #5d6578;
+
+  /* product accent — periwinkle; the app's own voice */
+  --accent: #7c8cf8;
+  --accent-soft: rgb(124 140 248 / 15%);
+  --accent-line: rgb(124 140 248 / 40%);
+
+  /* agent identities (set per lane, defaulted here) */
+  --claude: #e8956a;
+  --codex: #5bbfa2;
+
+  /* status */
+  --ok: #57c98a;
+  --warn: #e0a85a;
+  --danger: #e5707a;
+
+  /* radii */
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 14px;
+
+  /* elevation */
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-pop: 0 20px 60px rgb(0 0 0 / 55%);
+
+  --font-ui: 'Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Plex Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-hi);
+  background: var(--bg-base);
+  /* subtle top-lit panel: a hair brighter at the very top, like a screen */
+  background-image: radial-gradient(
+    120% 80% at 50% -10%,
+    rgb(124 140 248 / 6%) 0%,
+    transparent 55%
+  );
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+/* machine-emitted data wears mono everywhere */
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: 'zero' 1;
+}
+
+/* scrollbars: quiet, part of the panel */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 18%);
+  background-clip: padding-box;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

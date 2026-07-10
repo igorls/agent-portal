@@ -1,0 +1,52 @@
+<div class="activity">
+  <div class="head">
+    <h1>Activity</h1>
+    <p class="sub">Every migration is recorded here. Undo removes what a migration created — your source sessions are never touched.</p>
+  </div>
+
+  @if (note(); as n) {
+    <div class="note mono">{{ n }}</div>
+  }
+  @if (error(); as e) {
+    <div class="err mono">{{ e }}</div>
+  }
+
+  @if (loading()) {
+    <div class="state">Loading…</div>
+  } @else if (isEmpty()) {
+    <div class="state empty">
+      <span class="glyph">⇄</span>
+      No migrations yet. Drag a session onto another agent to route it.
+    </div>
+  } @else {
+    <ul class="log">
+      @for (entry of entries(); track entry.id) {
+        <li class="row" [class.undone]="entry.undone">
+          <div class="route">
+            <span class="agent from">{{ agentLabel(entry.sourceAgent) }}</span>
+            <span class="arrow">→</span>
+            <span class="agent to">{{ agentLabel(entry.targetAgent) }}</span>
+          </div>
+
+          <div class="detail">
+            <span class="grade" [class]="'g-' + entry.verifyGrade">{{ entry.verifyGrade }}</span>
+            <span class="ids mono" [title]="entry.sourceNativeId">
+              {{ entry.sourceNativeId.slice(0, 8) }} → {{ entry.targetNativeId.slice(0, 8) }}
+            </span>
+            <span class="when mono">{{ entry.at | date: 'MMM d, HH:mm' }}</span>
+          </div>
+
+          <div class="actions">
+            @if (entry.undone) {
+              <span class="undone-tag">undone</span>
+            } @else {
+              <button class="undo" (click)="undo(entry)" [disabled]="busy() === entry.id">
+                {{ busy() === entry.id ? '…' : 'Undo' }}
+              </button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</div>

@@ -1,0 +1,18 @@
+{
+  "name": "agent-portal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop portability layer for coding-agent sessions — a task board to view and migrate sessions between installed agents.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "ui:start": "pnpm --dir ui start",
+    "ui:build": "pnpm --dir ui build",
+    "ui:test": "pnpm --dir ui test",
+    "gen-types": "cargo test -p portal-core --lib -- --quiet"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

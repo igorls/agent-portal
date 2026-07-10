@@ -1,0 +1,91 @@
+<aside class="preview">
+  <header class="preview-header">
+    <div class="title-row">
+      <h3>{{ session().title ?? session().identity.nativeId.slice(0, 8) }}</h3>
+      <button class="close" (click)="closed.emit()" title="close">✕</button>
+    </div>
+    <div class="facts">
+      <span class="chip agent">{{ session().identity.agentId }}</span>
+      <span class="chip fidelity">{{ session().fidelity }}</span>
+      <span class="fact" [title]="session().workspace.cwd">{{ session().workspace.projectLabel }}</span>
+      @if (session().workspace.gitBranch; as branch) {
+        <span class="fact">⎇ {{ branch }}</span>
+      }
+      <span class="fact">{{ session().timeline.length }} turns</span>
+      @if (session().usage.known) {
+        <span class="fact"
+          >{{ session().usage.inputTokens.toLocaleString() }} in /
+          {{ session().usage.outputTokens.toLocaleString() }} out</span
+        >
+      }
+    </div>
+    @if (session().losses.length > 0) {
+      <div class="losses">
+        @for (loss of session().losses; track $index) {
+          <span class="loss-chip" [title]="loss.detail">{{ loss.code }}</span>
+        }
+      </div>
+    }
+    <label class="meta-toggle">
+      <input type="checkbox" [checked]="showMeta()" (change)="showMeta.set(!showMeta())" />
+      show meta records
+    </label>
+  </header>
+
+  <div class="turns">
+    @for (turn of visibleTurns(); track turn.id) {
+      <div class="turn" [class]="'role-' + turn.role" [class.meta]="turn.isMeta">
+        <div class="turn-head">
+          <span class="role">{{ roleLabel(turn) }}</span>
+          @if (turn.model) {
+            <span class="model">{{ turn.model }}</span>
+          }
+          @if (turn.timestamp) {
+            <span class="ts">{{ turn.timestamp | date: 'MMM d HH:mm:ss' }}</span>
+          }
+        </div>
+        @for (block of turn.blocks; track $index) {
+          @switch (block.kind) {
+            @case ('text') {
+              <div class="b-text">{{ asAny(block).text }}</div>
+            }
+            @case ('thinking') {
+              <details class="b-thinking">
+                <summary>thinking{{ asAny(block).encrypted ? ' 🔒 encrypted' : '' }}</summary>
+                <pre>{{ asAny(block).text || '(content unavailable)' }}</pre>
+              </details>
+            }
+            @case ('tool_call') {
+              <details class="b-tool">
+                <summary>⚙ {{ asAny(block).name }}</summary>
+                <pre>{{ asAny(block).arguments | json }}</pre>
+              </details>
+            }
+            @case ('tool_result') {
+              <details class="b-result" [class.error]="asAny(block).is_error">
+                <summary>↳ result{{ asAny(block).is_error ? ' (error)' : '' }}</summary>
+                <pre>{{ asAny(block).output | json }}</pre>
+              </details>
+            }
+            @case ('compaction') {
+              <div class="b-compaction">— {{ asAny(block).summary }} —</div>
+            }
+            @case ('meta') {
+              @if (showMeta()) {
+                <details class="b-meta">
+                  <summary>{{ asAny(block).source_kind }}</summary>
+                  <pre>{{ asAny(block).raw | json }}</pre>
+                </details>
+              }
+            }
+          }
+        }
+      </div>
+    }
+    @if (hiddenCount() > 0) {
+      <button class="show-all" (click)="showAll.set(true)">
+        show {{ hiddenCount() }} more turns
+      </button>
+    }
+  </div>
+</aside>

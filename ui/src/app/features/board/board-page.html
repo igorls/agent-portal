@@ -1,0 +1,156 @@
+<div class="toolbar">
+  <button class="refresh" (click)="store.load()" [disabled]="store.loading()" title="Rescan agent stores">
+    <span class="icon" [class.spin]="store.loading()">⟳</span>
+    {{ store.loading() ? 'Scanning' : 'Refresh' }}
+  </button>
+
+  @if (store.board(); as b) {
+    <div class="counts">
+      <span class="n mono">{{ store.totalSessions() }}</span>
+      <span class="l">sessions</span>
+      <span class="sep">across</span>
+      <span class="n mono">{{ b.lanes.length }}</span>
+      <span class="l">agents</span>
+    </div>
+  }
+
+  @if (dragSource()) {
+    <div class="routing-hint">
+      <span class="pulse"></span> routing — drop on a highlighted agent
+    </div>
+  } @else if (store.board()) {
+    <div class="idle-hint">drag a session onto another agent to migrate it</div>
+  }
+
+  @if (store.error(); as e) {
+    <span class="toolbar-error mono" [title]="e">scan failed</span>
+  }
+  @if (previewError(); as e) {
+    <span class="toolbar-error mono" [title]="e">preview failed</span>
+  }
+</div>
+
+@if (!store.board() && store.loading()) {
+  <div class="board-empty">
+    <span class="spin big">⟳</span>
+    <span>Scanning agent stores…</span>
+  </div>
+}
+
+@if (store.board(); as b) {
+  <div class="lanes" [class.dragging]="dragSource()">
+    @for (lane of b.lanes; track lane.agent.id) {
+      <section
+        class="lane"
+        [style.--agent]="accent(lane.agent.id)"
+        [class.target-ok]="canDropInto(lane.agent.id)"
+        [class.target-off]="dragSource() && dragSource() !== lane.agent.id && !canDropInto(lane.agent.id)"
+        [class.is-source]="dragSource() === lane.agent.id"
+      >
+        <header class="lane-header">
+          <div class="lane-id">
+            <span class="lane-dot"></span>
+            <h2>{{ lane.agent.displayName }}</h2>
+          </div>
+          <div class="lane-right">
+            @if (lane.agent.installation; as inst) {
+              <span class="lane-version mono" [title]="inst.storeRoot">{{ inst.version ?? 'installed' }}</span>
+            } @else {
+              <span class="lane-missing">offline</span>
+            }
+          </div>
+        </header>
+
+        @if (canDropInto(lane.agent.id)) {
+          <div class="route-banner">→ route here · native</div>
+        }
+
+        @if (lane.error; as err) {
+          <div class="lane-error mono" [title]="err">store scan failed</div>
+        }
+
+        <div
+          class="lane-body"
+          cdkDropList
+          [cdkDropListData]="lane"
+          [id]="dropListId(lane.agent.id)"
+          [cdkDropListConnectedTo]="dropListIds()"
+          [cdkDropListSortingDisabled]="true"
+          (cdkDropListDropped)="onDrop($event, lane)"
+        >
+          @for (project of lane.projects; track project.key) {
+            <div class="project">
+              <div class="project-header" [title]="project.cwdNormalized ?? project.key">
+                <span class="project-label mono">{{ project.label }}</span>
+                <span class="project-count">{{ project.sessions.length }}</span>
+              </div>
+
+              @for (
+                s of isExpanded(lane.agent.id, project.key)
+                  ? project.sessions
+                  : project.sessions.slice(0, collapsedLimit);
+                track s.nativeId
+              ) {
+                <article
+                  class="card"
+                  cdkDrag
+                  [cdkDragData]="s"
+                  (cdkDragStarted)="onDragStarted(lane.agent.id)"
+                  (cdkDragEnded)="onDragEnded()"
+                  [class.live]="s.maybeLive"
+                  [class.loading]="previewLoading() === s.nativeId"
+                  [title]="s.storePath"
+                  (click)="openPreview(s)"
+                >
+                  <div class="card-drag-preview" *cdkDragPreview>
+                    <span class="chip-dot" [style.--agent]="accent(lane.agent.id)"></span>
+                    {{ s.title ?? s.nativeId.slice(0, 8) }}
+                  </div>
+
+                  <div class="card-top">
+                    @if (s.maybeLive) {
+                      <span class="live-dot" title="the agent may be writing to this session now"></span>
+                    }
+                    <span class="card-title">{{ s.title ?? s.nativeId.slice(0, 8) }}</span>
+                  </div>
+                  <div class="card-meta mono">
+                    <span>{{ timeAgo(s.updatedAt) }}</span>
+                    @if (s.messageCount !== null) {
+                      <span class="dim">·</span>
+                      <span>{{ s.messageCountExact ? '' : '~' }}{{ s.messageCount }} msg</span>
+                    }
+                    @if (s.model) {
+                      <span class="model-chip">{{ s.model }}</span>
+                    }
+                  </div>
+                </article>
+              }
+
+              @if (project.sessions.length > collapsedLimit) {
+                <button class="show-more mono" (click)="toggleExpanded(lane.agent.id, project.key)">
+                  {{
+                    isExpanded(lane.agent.id, project.key)
+                      ? '– show fewer'
+                      : '+ ' + (project.sessions.length - collapsedLimit) + ' more'
+                  }}
+                </button>
+              }
+            </div>
+          } @empty {
+            <div class="lane-empty">
+              {{ lane.agent.installation ? 'No sessions yet' : 'Agent not installed' }}
+            </div>
+          }
+        </div>
+      </section>
+    }
+  </div>
+}
+
+@if (preview(); as p) {
+  <app-session-preview [session]="p" (closed)="closePreview()" />
+}
+
+@if (migration(); as m) {
+  <app-migration-wizard [request]="m" (closed)="onMigrationClosed($event)" />
+}

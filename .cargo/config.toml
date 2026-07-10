@@ -1,0 +1,4 @@
+# TS bindings from ts-rs land directly in the Angular app; any `cargo test`
+# regenerates them in place (CI diffs this directory to catch drift).
+[env]
+TS_RS_EXPORT_DIR = { value = "ui/src/app/core/ipc/gen", relative = true }
