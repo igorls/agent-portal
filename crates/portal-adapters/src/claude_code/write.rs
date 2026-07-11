@@ -25,7 +25,9 @@ use serde_json::{json, Value};
 
 use portal_core::dto::Installation;
 use portal_core::error::{PortalError, Result};
-use portal_core::ir::{tool_output_text, Block, CanonicalSession, LossCode, LossNote, Role};
+use portal_core::ir::{
+    tool_output_text, Block, CanonicalSession, LossCode, LossNote, Role, RAW_ARGS_KEY,
+};
 use portal_core::migration::types::{
     ArtifactKind, WriteOptions, WritePlan, WrittenArtifact, WrittenSession,
 };
@@ -185,10 +187,15 @@ pub fn write_session(
                     }
                     flush_results!();
                     let id = remap(call_id);
+                    // Anthropic tool_use.input must be an object. Object args pass
+                    // through; a non-object arg (e.g. apply_patch's patch string)
+                    // is wrapped under RAW_ARGS_KEY so it's preserved, not dropped.
                     let input = if arguments.is_object() {
                         arguments.clone()
                     } else {
-                        json!({})
+                        let mut m = serde_json::Map::new();
+                        m.insert(RAW_ARGS_KEY.to_string(), arguments.clone());
+                        Value::Object(m)
                     };
                     assistant_buf.push(json!({
                         "type": "tool_use",
@@ -315,4 +322,88 @@ fn claude_semver(inst: &Installation) -> String {
         .and_then(|v| v.split_whitespace().next())
         .unwrap_or("0.0.0")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use portal_core::ir::{Fidelity, SessionIdentity, Turn, UsageTotals, Workspace, IR_VERSION};
+    use portal_core::migration::types::WriteOptions;
+
+    fn turn(role: Role, block: Block) -> Turn {
+        Turn {
+            id: "t".into(),
+            parent_id: None,
+            role,
+            timestamp: None,
+            model: None,
+            is_meta: false,
+            blocks: vec![block],
+            usage: None,
+            raw: None,
+        }
+    }
+
+    #[test]
+    fn non_object_tool_args_are_preserved_not_dropped() {
+        // Regression: Codex's apply_patch stores its patch as a raw (non-object)
+        // string. The writer must wrap it, not replace it with `{}`, or the
+        // whole patch is silently lost and read-back verify fails.
+        let patch = "*** Begin Patch\n*** Add File: a.py\n+x = 1\n*** End Patch";
+        let session = CanonicalSession {
+            ir_version: IR_VERSION,
+            identity: SessionIdentity {
+                portal_id: "p".into(),
+                native_id: "n".into(),
+                agent_id: "codex".into(),
+                store_path: String::new(),
+                agent_version: None,
+                read_at: Utc::now(),
+            },
+            workspace: Workspace {
+                cwd: r"P:\some\project".into(),
+                cwd_normalized: "p:/some/project".into(),
+                git_branch: None,
+                project_label: "project".into(),
+            },
+            title: None,
+            timeline: vec![
+                turn(
+                    Role::Assistant,
+                    Block::ToolCall {
+                        call_id: "c1".into(),
+                        name: "apply_patch".into(),
+                        arguments: Value::String(patch.into()),
+                    },
+                ),
+                turn(
+                    Role::Tool,
+                    Block::ToolResult {
+                        call_id: "c1".into(),
+                        output: Value::String("done".into()),
+                        is_error: false,
+                    },
+                ),
+            ],
+            attachments: vec![],
+            usage: UsageTotals::default(),
+            losses: vec![],
+            fidelity: Fidelity::Full,
+        };
+
+        let dir = std::env::temp_dir().join(format!("portal-w-{}", uuid::Uuid::new_v4().simple()));
+        let inst = Installation {
+            cli_path: None,
+            version: Some("2.0.0".into()),
+            store_root: dir.display().to_string(),
+        };
+
+        let written = write_session(&inst, &session, &WriteOptions::default()).unwrap();
+        let content = std::fs::read_to_string(&written.primary_path).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(content.contains(RAW_ARGS_KEY), "raw args should be wrapped, not dropped");
+        assert!(content.contains("Begin Patch"), "patch text must be preserved");
+        assert!(!content.contains(r#""input":{}"#), "args must not collapse to an empty object");
+    }
 }

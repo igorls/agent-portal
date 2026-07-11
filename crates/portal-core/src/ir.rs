@@ -210,10 +210,25 @@ pub fn tool_output_text(value: &Value) -> String {
     }
 }
 
+/// Sentinel key writers use to wrap a non-object tool argument (e.g. Codex's
+/// `apply_patch` patch text, a raw string) so it satisfies stores whose
+/// `tool_use` input must be a JSON object — without losing the value.
+/// [`tool_args_text`] unwraps it so the wrapped form is identity-equal to the
+/// original for verification.
+pub const RAW_ARGS_KEY: &str = "__portal_raw";
+
 /// Canonical text form of tool-call arguments, used for verification so an
 /// object and its re-parsed twin hash identically (serde_json::Value orders
-/// object keys deterministically).
+/// object keys deterministically). A single-key `RAW_ARGS_KEY` wrapper is
+/// peeled first, so `"…patch…"` and `{"__portal_raw": "…patch…"}` agree.
 pub fn tool_args_text(value: &Value) -> String {
+    if let Value::Object(map) = value {
+        if map.len() == 1 {
+            if let Some(inner) = map.get(RAW_ARGS_KEY) {
+                return tool_args_text(inner);
+            }
+        }
+    }
     match value {
         Value::String(s) => s.clone(),
         other => other.to_string(),
@@ -383,5 +398,24 @@ mod tests {
         let session = base_session(vec![call, result]);
         assert!(session.validate().is_empty());
         assert_eq!(session.unanswered_tool_calls(), vec!["c2".to_string()]);
+    }
+
+    #[test]
+    fn raw_string_args_survive_object_wrapping() {
+        // A non-object arg (e.g. apply_patch's patch text) that a writer had to
+        // wrap under RAW_ARGS_KEY must hash identically to the raw source, so
+        // read-back verification stays Exact instead of seeing a dropped `{}`.
+        let patch = "*** Begin Patch\n*** Add File: a.py\n+print(1)\n*** End Patch";
+        let raw = Value::String(patch.to_string());
+        let wrapped = serde_json::json!({ RAW_ARGS_KEY: patch });
+        assert_eq!(tool_args_text(&raw), tool_args_text(&wrapped));
+        assert_eq!(tool_args_text(&wrapped), patch);
+
+        // A genuine object argument is untouched (no accidental unwrapping).
+        let obj = serde_json::json!({ "command": ["bash", "-c", "ls"] });
+        assert_eq!(tool_args_text(&obj), obj.to_string());
+        // A real single-key object that isn't the sentinel is left alone.
+        let single = serde_json::json!({ "path": "src/main.rs" });
+        assert_eq!(tool_args_text(&single), single.to_string());
     }
 }
