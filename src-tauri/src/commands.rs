@@ -352,7 +352,7 @@ pub async fn naming_status(
                 })
             })
             .collect();
-        entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        entries.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
         Ok(NamingReport {
             ollama_available: status.available,

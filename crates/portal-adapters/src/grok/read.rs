@@ -53,7 +53,7 @@ pub fn snapshot(inst: &Installation) -> Result<Vec<(ProjectRef, Vec<SessionSumma
         if sessions.is_empty() {
             continue;
         }
-        sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        sessions.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
         let cwd = sessions
             .iter()
             .find_map(|session| session.cwd.clone())
