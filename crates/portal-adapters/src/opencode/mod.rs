@@ -142,8 +142,11 @@ impl AgentAdapter for OpenCodeAdapter {
     }
 }
 
-/// Open the store read-only and immutable so a running OpenCode's WAL can't
-/// block us and we can never mutate the user's live DB.
+/// Open the store read-only. Plain READ_ONLY (not `immutable`) so we see data
+/// in the WAL too — OpenCode writes in WAL mode, and an immutable open would
+/// read a stale snapshot that misses recent sessions and still shows deleted
+/// ones. READ_ONLY can never mutate the DB, and WAL permits concurrent readers
+/// so a running OpenCode doesn't block us.
 pub(crate) fn open_ro(store_root: &str) -> Result<Connection> {
     let path = PathBuf::from(store_root);
     if !path.is_file() {
@@ -151,14 +154,9 @@ pub(crate) fn open_ro(store_root: &str) -> Result<Connection> {
             "opencode.db not found at {store_root}"
         )));
     }
-    // The URI form needs forward slashes; immutable=1 opens without touching WAL.
-    let uri = format!(
-        "file:{}?immutable=1",
-        path.display().to_string().replace('\\', "/")
-    );
-    Connection::open_with_flags(
-        uri,
-        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
-    )
-    .map_err(|e| PortalError::Other(format!("opening opencode.db: {e}")))
+    let conn = Connection::open_with_flags(&path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| PortalError::Other(format!("opening opencode.db: {e}")))?;
+    // Busy-wait briefly rather than erroring if OpenCode is mid-commit.
+    let _ = conn.busy_timeout(std::time::Duration::from_millis(2000));
+    Ok(conn)
 }
