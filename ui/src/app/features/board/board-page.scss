@@ -104,7 +104,64 @@
   font-size: 0.85rem;
 }
 
+/* ── agent filter chips ──────────────────────────────────────────────── */
+.agent-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 20px 10px;
+  flex: 0 0 auto;
+}
+
+.agent-chip {
+  --agent: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 10px 4px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+
+  .chip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    background: var(--agent);
+    box-shadow: 0 0 6px -1px var(--agent);
+  }
+  .chip-name {
+    white-space: nowrap;
+  }
+  .chip-count {
+    color: var(--text-lo);
+    font-size: 0.68rem;
+  }
+
+  &:hover {
+    border-color: var(--line-strong);
+  }
+
+  &.off {
+    opacity: 0.45;
+    .chip-dot {
+      background: var(--text-lo);
+      box-shadow: none;
+    }
+  }
+}
+
 /* ── lanes ───────────────────────────────────────────────────────────── */
+.lanes-empty {
+  margin: auto;
+  color: var(--text-lo);
+  font-size: 0.85rem;
+}
+
 .lanes {
   display: flex;
   gap: 16px;
@@ -123,8 +180,11 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  width: 348px;
-  flex: 0 0 348px;
+  /* elastic: lanes share the viewport, shrinking to a floor before the board
+     scrolls. Fixed-width lanes overflowed as soon as a 4th/5th agent appeared. */
+  flex: 1 1 0;
+  min-width: 264px;
+  max-width: 420px;
   background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);

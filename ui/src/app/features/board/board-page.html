@@ -30,6 +30,26 @@
   }
 </div>
 
+@if (store.board(); as b) {
+  @if (b.lanes.length > 1) {
+    <div class="agent-filter">
+      @for (lane of b.lanes; track lane.agent.id) {
+        <button
+          class="agent-chip"
+          [class.off]="isAgentHidden(lane.agent.id)"
+          [style.--agent]="accent(lane.agent.id)"
+          (click)="toggleAgent(lane.agent.id)"
+          [title]="isAgentHidden(lane.agent.id) ? 'Show ' + lane.agent.displayName : 'Hide ' + lane.agent.displayName"
+        >
+          <span class="chip-dot"></span>
+          <span class="chip-name">{{ lane.agent.displayName }}</span>
+          <span class="chip-count mono">{{ laneSessionCount(lane) }}</span>
+        </button>
+      }
+    </div>
+  }
+}
+
 @if (!store.board() && store.coldLoading()) {
   <div class="board-empty">
     <span class="spin big">⟳</span>
@@ -39,7 +59,7 @@
 
 @if (store.board(); as b) {
   <div class="lanes" [class.dragging]="dragSource()">
-    @for (lane of b.lanes; track lane.agent.id) {
+    @for (lane of visibleLanes(); track lane.agent.id) {
       <section
         class="lane"
         [style.--agent]="accent(lane.agent.id)"
@@ -160,6 +180,8 @@
           }
         </div>
       </section>
+    } @empty {
+      <div class="lanes-empty">All agents hidden — tap a chip above to show one.</div>
     }
   </div>
 }

@@ -43,8 +43,16 @@ export class BoardPage {
   protected readonly dragSource = signal<string | null>(null);
   protected readonly migration = signal<MigrationRequest | null>(null);
 
+  /** agents the user has hidden via the filter chips (narrow to a pair, etc.) */
+  protected readonly hiddenAgents = signal<ReadonlySet<string>>(new Set());
+
+  /** lanes actually rendered on the board: all detected minus hidden ones */
+  protected readonly visibleLanes = computed<Lane[]>(() =>
+    (this.store.board()?.lanes ?? []).filter((l) => !this.hiddenAgents().has(l.agent.id))
+  );
+
   protected readonly dropListIds = computed(() =>
-    (this.store.board()?.lanes ?? []).map((l) => this.dropListId(l.agent.id))
+    this.visibleLanes().map((l) => this.dropListId(l.agent.id))
   );
 
   /** project identities that appear in more than one agent lane */
@@ -71,6 +79,20 @@ export class BoardPage {
 
   protected accent(agentId: string): string {
     return LANE_ACCENTS[agentId] ?? '#569cd6';
+  }
+
+  protected isAgentHidden(agentId: string): boolean {
+    return this.hiddenAgents().has(agentId);
+  }
+
+  protected toggleAgent(agentId: string): void {
+    const next = new Set(this.hiddenAgents());
+    if (!next.delete(agentId)) next.add(agentId);
+    this.hiddenAgents.set(next);
+  }
+
+  protected laneSessionCount(lane: Lane): number {
+    return lane.projects.reduce((n, p) => n + p.sessions.length, 0);
   }
 
   /** Shared identity across lanes: normalized cwd, falling back to the key. */
