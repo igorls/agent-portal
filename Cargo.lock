@@ -2266,7 +2266,7 @@ dependencies = [
 
 [[package]]
 name = "portal-adapters"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "portal-core",
@@ -2279,7 +2279,7 @@ dependencies = [
 
 [[package]]
 name = "portal-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -2293,7 +2293,7 @@ dependencies = [
 
 [[package]]
 name = "portal-tauri"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
  "portal-adapters",
