@@ -1,0 +1,4 @@
+# Normalize line endings to LF in the repo across platforms. This keeps the
+# committed ts-rs bindings byte-identical whether regenerated on Windows, macOS,
+# or Linux, so the CI drift check is meaningful.
+* text=auto eol=lf

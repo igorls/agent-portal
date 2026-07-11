@@ -46,3 +46,14 @@ jobs:
       - run: pnpm --dir ui build
       - run: pnpm --dir ui test -- --watch=false
         continue-on-error: true
+
+  parity:
+    name: Tauri command parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check command parity (Rust ↔ Angular)
+        run: node scripts/check-command-parity.mjs
