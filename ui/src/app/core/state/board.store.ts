@@ -7,8 +7,11 @@ export class BoardStore {
   private readonly commands = inject(PortalCommands);
 
   readonly board = signal<BoardSnapshot | null>(null);
-  readonly loading = signal(false);
+  /** true while a full store scan is in flight (cached data may be showing) */
+  readonly refreshing = signal(false);
   readonly error = signal<string | null>(null);
+  /** true only before the very first data (cached or fresh) arrives */
+  readonly coldLoading = signal(false);
 
   readonly totalSessions = computed(() => {
     const board = this.board();
@@ -19,15 +22,34 @@ export class BoardStore {
     );
   });
 
+  /** Show the cached board instantly, then refresh from a full scan. */
   async load(): Promise<void> {
-    this.loading.set(true);
     this.error.set(null);
+    if (!this.board()) {
+      this.coldLoading.set(true);
+      try {
+        const cached = await this.commands.getCachedBoard();
+        if (cached) {
+          this.board.set(cached);
+          this.coldLoading.set(false);
+        }
+      } catch {
+        /* cache miss is fine; the refresh below fills it */
+      }
+    }
+    await this.refresh();
+  }
+
+  /** Force a full re-scan (also updates the on-disk cache). */
+  async refresh(): Promise<void> {
+    this.refreshing.set(true);
     try {
-      this.board.set(await this.commands.getBoard());
+      this.board.set(await this.commands.refreshBoard());
     } catch (e) {
       this.error.set(String(e));
     } finally {
-      this.loading.set(false);
+      this.refreshing.set(false);
+      this.coldLoading.set(false);
     }
   }
 }

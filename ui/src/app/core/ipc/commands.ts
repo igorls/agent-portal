@@ -29,8 +29,12 @@ export class PortalCommands {
     return this.tauri.invoke<AgentDescriptor[]>('detect_agents');
   }
 
-  getBoard(): Promise<BoardSnapshot> {
-    return this.tauri.invoke<BoardSnapshot>('get_board');
+  getCachedBoard(): Promise<BoardSnapshot | null> {
+    return this.tauri.invoke<BoardSnapshot | null>('get_cached_board');
+  }
+
+  refreshBoard(): Promise<BoardSnapshot> {
+    return this.tauri.invoke<BoardSnapshot>('refresh_board');
   }
 
   getSessionPreview(

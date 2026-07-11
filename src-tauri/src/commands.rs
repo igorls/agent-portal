@@ -30,8 +30,20 @@ pub async fn detect_agents(
     run_blocking(move || Ok(s.registry.descriptors(&s.env))).await
 }
 
+/// Instant: the last cached board (None on a cold start). The UI shows this
+/// immediately, then calls `refresh_board`.
 #[tauri::command]
-pub async fn get_board(
+pub async fn get_cached_board(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Option<BoardSnapshot>, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || Ok(s.index.cached_board())).await
+}
+
+/// Full scan of every store: rebuilds the board, refreshes the install cache,
+/// and updates the on-disk cache for next launch.
+#[tauri::command]
+pub async fn refresh_board(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<BoardSnapshot, PortalError> {
     let s = state.inner().clone();
@@ -43,6 +55,9 @@ pub async fn get_board(
                 .clone()
                 .map(|inst| (lane.agent.id.clone(), inst))
         }));
+        if let Err(e) = s.index.store_board(&board) {
+            eprintln!("failed to cache board: {e}");
+        }
         Ok(board)
     })
     .await

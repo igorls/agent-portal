@@ -20,7 +20,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::health,
             commands::detect_agents,
-            commands::get_board,
+            commands::get_cached_board,
+            commands::refresh_board,
             commands::get_session_preview,
             commands::check_ollama,
             commands::plan_migration,

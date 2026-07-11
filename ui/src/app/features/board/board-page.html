@@ -1,7 +1,7 @@
 <div class="toolbar">
-  <button class="refresh" (click)="store.load()" [disabled]="store.loading()" title="Rescan agent stores">
-    <span class="icon" [class.spin]="store.loading()">⟳</span>
-    {{ store.loading() ? 'Scanning' : 'Refresh' }}
+  <button class="refresh" (click)="store.refresh()" [disabled]="store.refreshing()" title="Rescan agent stores">
+    <span class="icon" [class.spin]="store.refreshing()">⟳</span>
+    {{ store.refreshing() ? 'Scanning' : 'Refresh' }}
   </button>
 
   @if (store.board(); as b) {
@@ -30,7 +30,7 @@
   }
 </div>
 
-@if (!store.board() && store.loading()) {
+@if (!store.board() && store.coldLoading()) {
   <div class="board-empty">
     <span class="spin big">⟳</span>
     <span>Scanning agent stores…</span>

@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use portal_core::adapter::{AgentAdapter, HostEnv};
 use portal_core::dto::Installation;
+use portal_core::index::IndexStore;
 use portal_core::migration::engine::PlannedMigration;
 use portal_core::migration::ledger::Ledger;
 use portal_core::registry::AgentRegistry;
@@ -11,6 +12,7 @@ pub struct AppState {
     pub env: HostEnv,
     pub registry: AgentRegistry,
     pub ledger: Ledger,
+    pub index: IndexStore,
     /// Detection results are cached: detect() shells out to `<cli> --version`
     /// which costs seconds for npm shims. Board refreshes repopulate this.
     installations: Mutex<HashMap<String, Installation>>,
@@ -20,10 +22,16 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(app_data_dir: std::path::PathBuf) -> Self {
+        let index = IndexStore::open(&app_data_dir).unwrap_or_else(|e| {
+            // A broken cache must never take down the app; fall back to temp.
+            eprintln!("index cache unavailable ({e}); using temp");
+            IndexStore::open(&std::env::temp_dir().join("agent-portal")).expect("temp index")
+        });
         Self {
             env: HostEnv::from_system(),
             registry: AgentRegistry::new(portal_adapters::builtin_adapters()),
             ledger: Ledger::new(app_data_dir),
+            index,
             installations: Mutex::new(HashMap::new()),
             plans: Mutex::new(HashMap::new()),
         }

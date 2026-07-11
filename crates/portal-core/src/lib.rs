@@ -1,6 +1,7 @@
 pub mod adapter;
 pub mod dto;
 pub mod error;
+pub mod index;
 pub mod ir;
 pub mod launch;
 pub mod migration;
