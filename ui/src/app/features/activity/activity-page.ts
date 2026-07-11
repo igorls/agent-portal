@@ -7,6 +7,7 @@ const AGENT_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex CLI',
   opencode: 'OpenCode',
+  antigravity: 'Antigravity',
 };
 
 @Component({

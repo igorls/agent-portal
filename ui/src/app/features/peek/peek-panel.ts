@@ -8,6 +8,7 @@ const AGENT_ACCENTS: Record<string, string> = {
   'claude-code': '#e8956a',
   codex: '#5bbfa2',
   opencode: '#b98ae0',
+  antigravity: '#48c6d9',
 };
 
 interface PeekRow {
