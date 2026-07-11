@@ -51,6 +51,21 @@ The Rust ↔ TypeScript boundary is typed end to end: Rust DTOs derive
 [`ts-rs`](https://github.com/Aleph-Alpha/ts-rs) bindings that are committed under
 `ui/src/app/core/ipc/gen/` and checked for drift in CI.
 
+## Install
+
+Download the installer for your platform from the
+[latest release](https://github.com/igorls/agent-portal/releases/latest)
+(`.dmg` for macOS, `.AppImage`/`.deb` for Linux, `.msi`/`.exe` for Windows).
+
+On macOS or Linux you can grab and install the latest build in one line:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/igorls/agent-portal/main/scripts/install.sh | bash
+```
+
+Builds are currently unsigned, so the first launch may need a Gatekeeper /
+SmartScreen override.
+
 ## Prerequisites
 
 - [Rust](https://rustup.rs) (stable) and the
