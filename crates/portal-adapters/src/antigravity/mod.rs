@@ -79,11 +79,7 @@ impl AgentAdapter for AntigravityAdapter {
     }
 
     fn list_projects(&self, inst: &Installation) -> Result<Vec<ProjectRef>> {
-        Ok(self
-            .snapshot(inst)?
-            .into_iter()
-            .map(|(p, _)| p)
-            .collect())
+        Ok(self.snapshot(inst)?.into_iter().map(|(p, _)| p).collect())
     }
 
     fn list_sessions(
@@ -106,10 +102,15 @@ impl AgentAdapter for AntigravityAdapter {
     ) -> Result<CanonicalSession> {
         let gemini = PathBuf::from(&inst.store_root);
         let db = find_conversation_db(&gemini, &locator.native_id).ok_or_else(|| {
-            PortalError::Other(format!("antigravity conversation {} not found", locator.native_id))
+            PortalError::Other(format!(
+                "antigravity conversation {} not found",
+                locator.native_id
+            ))
         })?;
         let index = summaries::build_index(&gemini);
-        let cwd = index.get(&locator.native_id).and_then(|s| s.workspace.clone());
+        let cwd = index
+            .get(&locator.native_id)
+            .and_then(|s| s.workspace.clone());
         read::read_session(&db, &locator.native_id, cwd)
     }
 
@@ -179,18 +180,16 @@ impl AgentAdapter for AntigravityAdapter {
                     .as_deref()
                     .map(label_from_cwd)
                     .unwrap_or_else(|| "unknown".to_string());
-                let entry = by_project
-                    .entry(project_key.clone())
-                    .or_insert_with(|| {
-                        (
-                            ProjectRef {
-                                key: project_key,
-                                cwd: cwd.clone(),
-                                label,
-                            },
-                            Vec::new(),
-                        )
-                    });
+                let entry = by_project.entry(project_key.clone()).or_insert_with(|| {
+                    (
+                        ProjectRef {
+                            key: project_key,
+                            cwd: cwd.clone(),
+                            label,
+                        },
+                        Vec::new(),
+                    )
+                });
                 entry.1.push(session);
             }
         }

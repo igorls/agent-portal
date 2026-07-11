@@ -5,8 +5,8 @@ use portal_core::adapter::SessionLocator;
 use portal_core::dto::{
     AgentDescriptor, BoardSnapshot, Health, NamingCounts, NamingEntry, NamingReport,
 };
-use portal_core::index::session_revision;
 use portal_core::error::PortalError;
+use portal_core::index::session_revision;
 use portal_core::ir::CanonicalSession;
 use portal_core::launch;
 use portal_core::migration::engine::{self, BriefConfig};

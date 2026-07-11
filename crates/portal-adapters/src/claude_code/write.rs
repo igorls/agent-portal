@@ -402,8 +402,17 @@ mod tests {
         let content = std::fs::read_to_string(&written.primary_path).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
 
-        assert!(content.contains(RAW_ARGS_KEY), "raw args should be wrapped, not dropped");
-        assert!(content.contains("Begin Patch"), "patch text must be preserved");
-        assert!(!content.contains(r#""input":{}"#), "args must not collapse to an empty object");
+        assert!(
+            content.contains(RAW_ARGS_KEY),
+            "raw args should be wrapped, not dropped"
+        );
+        assert!(
+            content.contains("Begin Patch"),
+            "patch text must be preserved"
+        );
+        assert!(
+            !content.contains(r#""input":{}"#),
+            "args must not collapse to an empty object"
+        );
     }
 }

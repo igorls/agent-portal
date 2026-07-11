@@ -44,7 +44,9 @@ impl Msg {
         let mut fields = Vec::new();
         let mut i = 0;
         while i < b.len() {
-            let Some(tag) = read_varint(b, &mut i) else { break };
+            let Some(tag) = read_varint(b, &mut i) else {
+                break;
+            };
             let field = (tag >> 3) as u32;
             let wire = tag & 7;
             if field == 0 {
@@ -70,7 +72,9 @@ impl Msg {
                     Val::Fixed
                 }
                 2 => {
-                    let Some(len) = read_varint(b, &mut i) else { break };
+                    let Some(len) = read_varint(b, &mut i) else {
+                        break;
+                    };
                     let len = len as usize;
                     if i + len > b.len() {
                         break;
@@ -103,7 +107,9 @@ impl Msg {
         for (_, v) in &self.fields {
             if let Val::Bytes(b) = v {
                 if let Ok(s) = std::str::from_utf8(b) {
-                    let clean = s.chars().all(|c| !c.is_control() || matches!(c, '\n' | '\t' | '\r'));
+                    let clean = s
+                        .chars()
+                        .all(|c| !c.is_control() || matches!(c, '\n' | '\t' | '\r'));
                     if clean && s.len() >= 2 {
                         out.push(s.to_string());
                         continue;
@@ -119,7 +125,8 @@ impl Val {
     pub fn as_str(&self) -> Option<&str> {
         match self {
             Val::Bytes(b) => std::str::from_utf8(b).ok().filter(|s| {
-                s.chars().all(|c| !c.is_control() || matches!(c, '\n' | '\t' | '\r'))
+                s.chars()
+                    .all(|c| !c.is_control() || matches!(c, '\n' | '\t' | '\r'))
             }),
             _ => None,
         }

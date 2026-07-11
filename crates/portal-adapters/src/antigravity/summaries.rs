@@ -34,9 +34,14 @@ fn is_uuid(s: &str) -> bool {
 /// Build the index from all available summary sources under `~/.gemini`.
 pub fn build_index(gemini: &Path) -> Index {
     let mut index = Index::new();
-    parse_ide_pb(&gemini.join("antigravity").join("agyhub_summaries_proto.pb"), &mut index);
+    parse_ide_pb(
+        &gemini.join("antigravity").join("agyhub_summaries_proto.pb"),
+        &mut index,
+    );
     parse_cli_db(
-        &gemini.join("antigravity-cli").join("conversation_summaries.db"),
+        &gemini
+            .join("antigravity-cli")
+            .join("conversation_summaries.db"),
         &mut index,
     );
     index
@@ -79,7 +84,10 @@ fn parse_ide_pb(path: &Path, index: &mut Index) {
             .cloned();
         // an agent role like "research"/"browser" near the top marks a subagent
         let is_subagent = strings.iter().take(4).any(|s| {
-            matches!(s.as_str(), "research" | "browser" | "planner" | "coder" | "reviewer")
+            matches!(
+                s.as_str(),
+                "research" | "browser" | "planner" | "coder" | "reviewer"
+            )
         });
         index.entry(id).or_insert(Summary {
             title,

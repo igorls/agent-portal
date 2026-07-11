@@ -124,11 +124,19 @@ pub fn replay(text: &str) -> Value {
             Some(0) => session = ev.get("v").cloned().unwrap_or(Value::Null),
             Some(1) => {
                 let path = parse_path(ev.get("k").unwrap_or(&Value::Null));
-                apply_set(&mut session, &path, ev.get("v").cloned().unwrap_or(Value::Null));
+                apply_set(
+                    &mut session,
+                    &path,
+                    ev.get("v").cloned().unwrap_or(Value::Null),
+                );
             }
             Some(2) => {
                 let path = parse_path(ev.get("k").unwrap_or(&Value::Null));
-                apply_append(&mut session, &path, ev.get("v").cloned().unwrap_or(Value::Null));
+                apply_append(
+                    &mut session,
+                    &path,
+                    ev.get("v").cloned().unwrap_or(Value::Null),
+                );
             }
             _ => {}
         }
@@ -168,7 +176,9 @@ pub fn read_session(path: &Path, id: &str, cwd: Option<String>) -> Result<Canoni
                     timestamp: ts,
                     model: None,
                     is_meta: false,
-                    blocks: vec![Block::Text { text: t.to_string() }],
+                    blocks: vec![Block::Text {
+                        text: t.to_string(),
+                    }],
                     usage: None,
                     raw: None,
                 });
@@ -218,7 +228,10 @@ pub fn read_session(path: &Path, id: &str, cwd: Option<String>) -> Result<Canoni
             }
         }
         if !blocks.is_empty() {
-            let model = req.get("modelId").and_then(Value::as_str).map(str::to_string);
+            let model = req
+                .get("modelId")
+                .and_then(Value::as_str)
+                .map(str::to_string);
             timeline.push(Turn {
                 id: format!("r{ri}a"),
                 parent_id: None,
@@ -260,7 +273,9 @@ pub fn read_session(path: &Path, id: &str, cwd: Option<String>) -> Result<Canoni
     if dropped > 0 {
         losses.push(LossNote {
             code: LossCode::UnknownRecord,
-            detail: format!("{dropped} response part(s) had no extractable text (edits/references/markers)"),
+            detail: format!(
+                "{dropped} response part(s) had no extractable text (edits/references/markers)"
+            ),
             turn_id: None,
         });
     }
@@ -378,8 +393,14 @@ mod tests {
         ]
         .join("\n");
         let s = replay(&log);
-        assert_eq!(s.pointer("/customTitle").and_then(Value::as_str), Some("Fix the parser"));
-        let resp = s.pointer("/requests/0/response").and_then(Value::as_array).unwrap();
+        assert_eq!(
+            s.pointer("/customTitle").and_then(Value::as_str),
+            Some("Fix the parser")
+        );
+        let resp = s
+            .pointer("/requests/0/response")
+            .and_then(Value::as_array)
+            .unwrap();
         assert_eq!(resp.len(), 2); // initial markdown + streamed thinking
     }
 
@@ -409,7 +430,10 @@ mod tests {
         // thinking + markdown + tool-as-text = 3 blocks; undoStop dropped.
         assert_eq!(asst.blocks.len(), 3);
         assert!(matches!(asst.blocks[0], Block::Thinking { .. }));
-        assert!(ir.losses.iter().any(|l| l.code == LossCode::ToolPairingIncomplete));
+        assert!(ir
+            .losses
+            .iter()
+            .any(|l| l.code == LossCode::ToolPairingIncomplete));
         assert!(ir.losses.iter().any(|l| l.code == LossCode::UnknownRecord));
     }
 }

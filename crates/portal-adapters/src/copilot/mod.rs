@@ -23,7 +23,9 @@ use portal_core::dto::{
 use portal_core::error::{PortalError, Result};
 use portal_core::ir::CanonicalSession;
 use portal_core::migration::types::CommandSpec;
-use portal_core::util::paths::{cli_version, file_uri_to_path, find_cli, label_from_cwd, normalize_cwd};
+use portal_core::util::paths::{
+    cli_version, file_uri_to_path, find_cli, label_from_cwd, normalize_cwd,
+};
 
 pub const ID: &str = "copilot";
 
@@ -106,10 +108,7 @@ impl AgentAdapter for CopilotAdapter {
                 PortalError::Other(format!("copilot session {} not found", locator.native_id))
             })?;
         // The workspace uri lives in the <hash> dir two levels up from the file.
-        let cwd = path
-            .parent()
-            .and_then(Path::parent)
-            .and_then(workspace_cwd);
+        let cwd = path.parent().and_then(Path::parent).and_then(workspace_cwd);
         read::read_session(&path, &locator.native_id, cwd)
     }
 

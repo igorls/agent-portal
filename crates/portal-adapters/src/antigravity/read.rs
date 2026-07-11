@@ -43,8 +43,8 @@ pub fn read_session(db_path: &Path, id: &str, cwd: Option<String>) -> Result<Can
     let mut skipped = 0usize;
 
     for row in rows {
-        let (idx, _step_type, payload) = row
-            .map_err(|e| PortalError::Other(format!("antigravity step row: {e}")))?;
+        let (idx, _step_type, payload) =
+            row.map_err(|e| PortalError::Other(format!("antigravity step row: {e}")))?;
         let Some(payload) = payload else {
             continue;
         };
