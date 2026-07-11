@@ -51,6 +51,7 @@ impl AgentAdapter for AntigravityAdapter {
             watch: true,
             launch_resume: true,
             launch_new: true,
+            context_tokens: None, // brief-only target; native write not offered
             write_confidence: None,
             version_range_tested: "agy 0.x".to_string(),
             notes: vec![

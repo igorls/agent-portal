@@ -49,6 +49,7 @@ impl AgentAdapter for OpenCodeAdapter {
             watch: true,
             launch_resume: true,
             launch_new: true,
+            context_tokens: None, // depends entirely on the configured model
             write_confidence: None,
             version_range_tested: "1.17.x".to_string(),
             notes: vec![

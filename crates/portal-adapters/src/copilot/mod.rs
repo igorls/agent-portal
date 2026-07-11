@@ -50,6 +50,7 @@ impl AgentAdapter for CopilotAdapter {
             watch: true,
             launch_resume: false, // a VS Code chat can't be resumed from the CLI
             launch_new: true,
+            context_tokens: None, // brief-only target; native write not offered
             write_confidence: None,
             version_range_tested: "VS Code 1.10x chat v3".to_string(),
             notes: vec![

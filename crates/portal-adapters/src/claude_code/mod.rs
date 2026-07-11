@@ -50,6 +50,7 @@ impl AgentAdapter for ClaudeCodeAdapter {
             watch: true,
             launch_resume: true,
             launch_new: true,
+            context_tokens: Some(200_000), // Opus / default; Sonnet 1M fits more
             write_confidence: Some("High".to_string()),
             version_range_tested: "2.0–2.1.x".to_string(),
             notes: vec![

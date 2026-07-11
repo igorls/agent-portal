@@ -37,9 +37,25 @@
     @case ('review') {
       @if (report(); as r) {
         <div class="pane">
+          @if (r.warnings.length > 0) {
+            <div class="advisory" [class.blocking]="oversized()">
+              @for (w of r.warnings; track $index) {
+                <div class="advisory-line">⚠ {{ w }}</div>
+              }
+              @if (oversized() && request().brief) {
+                <button class="switch-brief" (click)="switchToBrief()">
+                  Use handoff brief instead →
+                </button>
+              }
+            </div>
+          }
+
           @if (r.kind === 'native') {
             <div class="stat-row">
               <div class="stat"><span class="n">{{ r.turnCount }}</span><span class="l">turns</span></div>
+              <div class="stat" [class.warn]="oversized()">
+                <span class="n">≈{{ fmtTokens(r.estimatedTokens) }}</span><span class="l">tokens</span>
+              </div>
               <div class="stat">
                 <span class="n">{{ r.unansweredToolCalls }}</span><span class="l">unanswered calls</span>
               </div>

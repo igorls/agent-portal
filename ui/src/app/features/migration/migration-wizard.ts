@@ -49,6 +49,26 @@ export class MigrationWizard {
     ].filter((r) => r.value > 0);
   });
 
+  /** native migration whose estimated size runs past the target's window */
+  protected readonly oversized = computed(() => {
+    const r = this.report();
+    return (
+      !!r &&
+      r.kind === 'native' &&
+      r.targetContextTokens != null &&
+      r.estimatedTokens > r.targetContextTokens
+    );
+  });
+
+  protected fmtTokens(n: number): string {
+    return n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`;
+  }
+
+  /** Re-plan as a handoff brief (offered when a native migration is oversized). */
+  protected switchToBrief(): void {
+    if (this.request().brief) this.choose('brief');
+  }
+
   constructor() {
     queueMicrotask(() => this.start());
   }

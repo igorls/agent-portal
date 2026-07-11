@@ -11,7 +11,7 @@ use chrono::Utc;
 use crate::adapter::{AgentAdapter, SessionLocator};
 use crate::dto::Installation;
 use crate::error::{PortalError, Result};
-use crate::ir::{Block, CanonicalSession};
+use crate::ir::{tool_args_text, tool_output_text, Block, CanonicalSession};
 use crate::migration::ledger::{Ledger, LedgerEntry};
 use crate::migration::types::{
     ArtifactKind, BlockCensus, DryRunReport, MigrationKind, MigrationResult, UndoReport,
@@ -65,6 +65,31 @@ pub fn census(session: &CanonicalSession) -> BlockCensus {
     c
 }
 
+/// Rough token estimate of a session's transferable content (~4 chars/token).
+/// Meta turns aren't written, so they're excluded; this approximates how much a
+/// target would have to load to resume the migrated session.
+pub fn estimate_tokens(session: &CanonicalSession) -> u32 {
+    let mut chars: u64 = 0;
+    for turn in &session.timeline {
+        if turn.is_meta {
+            continue;
+        }
+        for block in &turn.blocks {
+            chars += match block {
+                Block::Text { text } => text.len() as u64,
+                Block::Thinking { text, .. } => text.len() as u64,
+                Block::ToolCall { name, arguments, .. } => {
+                    (name.len() + tool_args_text(arguments).len()) as u64
+                }
+                Block::ToolResult { output, .. } => tool_output_text(output).len() as u64,
+                Block::Compaction { summary } => summary.len() as u64,
+                Block::Meta { .. } => 0,
+            };
+        }
+    }
+    (chars / 4).min(u32::MAX as u64) as u32
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn plan(
     source_adapter: &Arc<dyn AgentAdapter>,
@@ -107,6 +132,24 @@ pub fn plan(
         ));
     }
 
+    // A native migration loads the whole transcript into the target at once; if
+    // the estimate runs well past the target's default window, nudge toward a
+    // brief instead of letting the user hit an unloadable session.
+    let estimated_tokens = estimate_tokens(&session);
+    let target_context_tokens = target_adapter.capabilities().context_tokens;
+    if kind == MigrationKind::Native {
+        if let Some(limit) = target_context_tokens {
+            if estimated_tokens > limit {
+                warnings.push(format!(
+                    "large session (≈{}k tokens) may exceed {}'s default context window (≈{}k) and fail to load — consider the handoff brief; a larger-context model (e.g. Claude Sonnet 1M) can still resume it natively",
+                    estimated_tokens / 1000,
+                    target_adapter.display_name(),
+                    limit / 1000,
+                ));
+            }
+        }
+    }
+
     let unanswered = session.unanswered_tool_calls();
     let mut report = DryRunReport {
         plan_id: uuid::Uuid::now_v7().to_string(),
@@ -120,6 +163,8 @@ pub fn plan(
         census: census(&session),
         predicted_losses: session.losses.clone(),
         unanswered_tool_calls: unanswered.len() as u32,
+        estimated_tokens,
+        target_context_tokens,
         warnings,
         target_path_hint: String::new(),
         resume_preview: String::new(),

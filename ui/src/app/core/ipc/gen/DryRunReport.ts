@@ -3,7 +3,16 @@ import type { BlockCensus } from "./BlockCensus";
 import type { LossNote } from "./LossNote";
 import type { MigrationKind } from "./MigrationKind";
 
-export type DryRunReport = { planId: string, kind: MigrationKind, sourceAgent: string, sourceNativeId: string, sourceTitle: string | null, targetAgent: string, cwd: string, turnCount: number, census: BlockCensus, predictedLosses: Array<LossNote>, unansweredToolCalls: number, warnings: Array<string>, targetPathHint: string, resumePreview: string, 
+export type DryRunReport = { planId: string, kind: MigrationKind, sourceAgent: string, sourceNativeId: string, sourceTitle: string | null, targetAgent: string, cwd: string, turnCount: number, census: BlockCensus, predictedLosses: Array<LossNote>, unansweredToolCalls: number, 
+/**
+ * Rough token estimate of the session's transferable content (chars/4).
+ */
+estimatedTokens: number, 
+/**
+ * The target's approximate default context window, when known — for the UI
+ * to show alongside the estimate.
+ */
+targetContextTokens: number | null, warnings: Array<string>, targetPathHint: string, resumePreview: string, 
 /**
  * Brief mode only: the exact handoff text that will be written.
  */

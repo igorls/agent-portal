@@ -47,6 +47,7 @@ impl AgentAdapter for CodexAdapter {
             watch: true,
             launch_resume: true,
             launch_new: true,
+            context_tokens: Some(272_000), // GPT-5-class window
             write_confidence: Some("High".to_string()),
             version_range_tested: "0.143–0.144".to_string(),
             notes: vec![

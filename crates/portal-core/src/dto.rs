@@ -46,6 +46,13 @@ pub struct Capabilities {
     /// Can start a fresh session seeded with a prompt (enables brief-mode as a
     /// migration target).
     pub launch_new: bool,
+    /// Approximate default context window (tokens) of this agent when it resumes
+    /// a native session. Used only as a soft advisory: a session estimated well
+    /// above this may not load, and the wizard nudges toward a brief. `None`
+    /// when the window is too model-dependent to guess (e.g. OpenCode). It is a
+    /// conservative default — larger-context models (e.g. Claude Sonnet 1M) fit
+    /// more.
+    pub context_tokens: Option<u32>,
     /// Human confidence in the native writer: "High" | "Medium" | "Experimental".
     pub write_confidence: Option<String>,
     /// Agent versions this adapter has fixtures/verification for, e.g. "2.0–2.1.x".

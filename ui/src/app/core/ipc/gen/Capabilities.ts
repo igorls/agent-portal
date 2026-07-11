@@ -13,6 +13,15 @@ export type Capabilities = { storeKind: StoreKind, read: SupportLevel, writeNati
  */
 launchNew: boolean, 
 /**
+ * Approximate default context window (tokens) of this agent when it resumes
+ * a native session. Used only as a soft advisory: a session estimated well
+ * above this may not load, and the wizard nudges toward a brief. `None`
+ * when the window is too model-dependent to guess (e.g. OpenCode). It is a
+ * conservative default — larger-context models (e.g. Claude Sonnet 1M) fit
+ * more.
+ */
+contextTokens: number | null, 
+/**
  * Human confidence in the native writer: "High" | "Medium" | "Experimental".
  */
 writeConfidence: string | null, 

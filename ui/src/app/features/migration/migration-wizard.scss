@@ -156,6 +156,52 @@ header {
   &.mode {
     margin-left: auto;
   }
+
+  &.warn .n {
+    color: var(--warn);
+  }
+}
+
+.advisory {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 13px;
+  margin-bottom: 16px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-mid);
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--r-md);
+
+  .advisory-line {
+    color: var(--text-hi);
+  }
+
+  &.blocking {
+    background: color-mix(in srgb, var(--warn) 15%, transparent);
+    border-color: var(--warn);
+  }
+}
+
+.switch-brief {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 6px 12px;
+  font-family: var(--font-ui);
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.14s;
+
+  &:hover {
+    background: color-mix(in srgb, var(--accent) 20%, transparent);
+  }
 }
 
 .badge {

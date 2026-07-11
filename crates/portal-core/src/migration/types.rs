@@ -128,6 +128,11 @@ pub struct DryRunReport {
     pub census: BlockCensus,
     pub predicted_losses: Vec<LossNote>,
     pub unanswered_tool_calls: u32,
+    /// Rough token estimate of the session's transferable content (chars/4).
+    pub estimated_tokens: u32,
+    /// The target's approximate default context window, when known — for the UI
+    /// to show alongside the estimate.
+    pub target_context_tokens: Option<u32>,
     pub warnings: Vec<String>,
     pub target_path_hint: String,
     pub resume_preview: String,
