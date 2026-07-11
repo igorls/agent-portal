@@ -8,6 +8,9 @@
     <div class="counts">
       <span class="n mono">{{ store.totalSessions() }}</span>
       <span class="l">sessions</span>
+      <span class="sep">in</span>
+      <span class="n mono">{{ projects().length }}</span>
+      <span class="l">projects</span>
       <span class="sep">across</span>
       <span class="n mono">{{ b.lanes.length }}</span>
       <span class="l">agents</span>
@@ -43,7 +46,7 @@
         >
           <span class="chip-dot"></span>
           <span class="chip-name">{{ lane.agent.displayName }}</span>
-          <span class="chip-count mono">{{ laneSessionCount(lane) }}</span>
+          <span class="chip-count mono">{{ laneSessionCount(lane.agent.id) }}</span>
         </button>
       }
     </div>
@@ -57,132 +60,153 @@
   </div>
 }
 
-@if (store.board(); as b) {
-  <div class="lanes" [class.dragging]="dragSource()">
-    @for (lane of visibleLanes(); track lane.agent.id) {
-      <section
-        class="lane"
-        [style.--agent]="accent(lane.agent.id)"
-        [class.target-ok]="canDropInto(lane.agent.id)"
-        [class.target-off]="dragSource() && dragSource() !== lane.agent.id && !canDropInto(lane.agent.id)"
-        [class.is-source]="dragSource() === lane.agent.id"
-      >
-        <header class="lane-header">
-          <div class="lane-id">
-            <span class="lane-dot"></span>
-            <h2>{{ lane.agent.displayName }}</h2>
-          </div>
-          <div class="lane-right">
-            @if (lane.agent.installation; as inst) {
-              <span class="lane-version mono" [title]="inst.storeRoot">{{ inst.version ?? 'installed' }}</span>
-            } @else {
-              <span class="lane-missing">offline</span>
+@if (store.board()) {
+  <div class="board-split">
+    <!-- ── project rail (master) ─────────────────────────────────────── -->
+    <aside class="project-rail">
+      <div class="rail-head">
+        <input
+          class="rail-search mono"
+          type="text"
+          placeholder="Filter projects…"
+          [value]="projectFilter()"
+          (input)="onFilterInput($event)"
+        />
+      </div>
+      <div class="rail-list">
+        @for (p of filteredProjects(); track p.id) {
+          <button
+            class="project-entry"
+            [class.active]="isSelected(p.id)"
+            (click)="selectProject(p.id)"
+            [title]="p.path ?? p.label"
+          >
+            <div class="pe-top">
+              <span class="pe-label mono">{{ p.label }}</span>
+              @if (p.liveCount > 0) {
+                <span class="pe-live" [title]="p.liveCount + ' live'"></span>
+              }
+            </div>
+            <div class="pe-meta">
+              <span class="pe-dots">
+                @for (a of p.agentIds; track a) {
+                  <span class="pe-dot" [style.--agent]="accent(a)"></span>
+                }
+              </span>
+              <span class="pe-count mono">{{ p.totalSessions }}</span>
+            </div>
+          </button>
+        } @empty {
+          <div class="rail-empty">No projects match “{{ projectFilter() }}”.</div>
+        }
+      </div>
+    </aside>
+
+    <!-- ── project stage (detail) ────────────────────────────────────── -->
+    <section class="project-stage">
+      @if (activeEntry(); as ap) {
+        <header class="stage-head">
+          <div class="sh-id">
+            <h2 class="mono">{{ ap.label }}</h2>
+            @if (ap.path) {
+              <span class="sh-path mono" [title]="ap.path">{{ ap.path }}</span>
             }
+          </div>
+          <div class="sh-summary mono">
+            {{ ap.totalSessions }} sessions · {{ ap.agentIds.length }}
+            {{ ap.agentIds.length === 1 ? 'agent' : 'agents' }}
           </div>
         </header>
 
-        @if (canDropInto(lane.agent.id)) {
-          <div class="route-banner">→ route here · native</div>
-        }
-
-        @if (lane.error; as err) {
-          <div class="lane-error mono" [title]="err">store scan failed</div>
-        }
-
-        <div
-          class="lane-body"
-          cdkDropList
-          [cdkDropListData]="lane"
-          [id]="dropListId(lane.agent.id)"
-          [cdkDropListConnectedTo]="dropListIds()"
-          [cdkDropListSortingDisabled]="true"
-          (cdkDropListDropped)="onDrop($event, lane)"
-        >
-          @for (project of lane.projects; track project.key) {
-            <div
-              class="project"
-              [class.open]="isProjectOpen(project)"
-              [class.linked]="isProjectLinked(project)"
-              [class.linked-open]="isProjectOpen(project) && isProjectLinked(project)"
+        <div class="tracks" [class.dragging]="dragSource()">
+          @for (track of activeTracks(); track track.agentId) {
+            <section
+              class="track"
+              [style.--agent]="accent(track.agentId)"
+              [class.empty]="track.sessions.length === 0"
+              [class.target-ok]="canDropInto(track.agentId)"
+              [class.target-off]="dragSource() && dragSource() !== track.agentId && !canDropInto(track.agentId)"
+              [class.is-source]="dragSource() === track.agentId"
             >
-              <button
-                class="project-header"
-                (click)="toggleProject(project)"
-                [title]="project.cwdNormalized ?? project.key"
-              >
-                <span class="chevron" [class.down]="isProjectOpen(project)">▸</span>
-                <span class="project-label mono">{{ project.label }}</span>
-                @if (isProjectLinked(project)) {
-                  <span class="link-dot" title="the same project exists in another agent"></span>
+              <header class="track-header">
+                <span class="track-dot"></span>
+                <h3>{{ track.displayName }}</h3>
+                @if (!track.installed) {
+                  <span class="track-offline">offline</span>
                 }
-                <span class="project-count">{{ project.sessions.length }}</span>
-              </button>
+                <span class="track-count mono">{{ track.sessions.length }}</span>
+              </header>
 
-              @if (isProjectOpen(project)) {
-                <div class="project-body">
-                  @for (
-                    s of isShownFull(lane.agent.id, project.key)
-                      ? project.sessions
-                      : project.sessions.slice(0, collapsedLimit);
-                    track s.nativeId
-                  ) {
-                    <article
-                      class="card"
-                      cdkDrag
-                      [cdkDragData]="s"
-                      (cdkDragStarted)="onDragStarted(lane.agent.id)"
-                      (cdkDragEnded)="onDragEnded()"
-                      [class.live]="s.maybeLive"
-                      [class.loading]="previewLoading() === s.nativeId"
-                      [title]="s.storePath"
-                      (click)="openPreview(s)"
-                    >
-                      <div class="card-drag-preview" *cdkDragPreview>
-                        <span class="chip-dot" [style.--agent]="accent(lane.agent.id)"></span>
-                        {{ s.title ?? s.nativeId.slice(0, 8) }}
-                      </div>
-
-                      <div class="card-top">
-                        @if (s.maybeLive) {
-                          <span class="live-dot" title="the agent may be writing to this session now"></span>
-                        }
-                        <span class="card-title">{{ s.title ?? s.nativeId.slice(0, 8) }}</span>
-                      </div>
-                      <div class="card-meta mono">
-                        <span>{{ timeAgo(s.updatedAt) }}</span>
-                        @if (s.messageCount !== null) {
-                          <span class="dim">·</span>
-                          <span>{{ s.messageCountExact ? '' : '~' }}{{ s.messageCount }} msg</span>
-                        }
-                        @if (s.model) {
-                          <span class="model-chip">{{ s.model }}</span>
-                        }
-                      </div>
-                    </article>
-                  }
-
-                  @if (project.sessions.length > collapsedLimit) {
-                    <button class="show-more mono" (click)="toggleShownFull(lane.agent.id, project.key)">
-                      {{
-                        isShownFull(lane.agent.id, project.key)
-                          ? '– show fewer'
-                          : '+ ' + (project.sessions.length - collapsedLimit) + ' more'
-                      }}
-                    </button>
-                  }
-                </div>
+              @if (canDropInto(track.agentId)) {
+                <div class="route-banner">→ drop to migrate here</div>
               }
-            </div>
-          } @empty {
-            <div class="lane-empty">
-              {{ lane.agent.installation ? 'No sessions yet' : 'Agent not installed' }}
-            </div>
+
+              <div
+                class="track-body"
+                cdkDropList
+                [cdkDropListData]="track"
+                [id]="dropListId(track.agentId)"
+                [cdkDropListConnectedTo]="dropListIds()"
+                [cdkDropListSortingDisabled]="true"
+                (cdkDropListDropped)="onDropTrack($event, track)"
+              >
+                @for (s of visibleCards(track); track s.nativeId) {
+                  <article
+                    class="card"
+                    cdkDrag
+                    [cdkDragData]="s"
+                    (cdkDragStarted)="onDragStarted(track.agentId)"
+                    (cdkDragEnded)="onDragEnded()"
+                    [class.live]="s.maybeLive"
+                    [class.loading]="previewLoading() === s.nativeId"
+                    [title]="s.storePath"
+                    (click)="openPreview(s)"
+                  >
+                    <div class="card-drag-preview" *cdkDragPreview>
+                      <span class="chip-dot" [style.--agent]="accent(track.agentId)"></span>
+                      {{ s.title ?? s.nativeId.slice(0, 8) }}
+                    </div>
+
+                    <div class="card-top">
+                      @if (s.maybeLive) {
+                        <span class="live-dot" title="the agent may be writing to this session now"></span>
+                      }
+                      <span class="card-title">{{ s.title ?? s.nativeId.slice(0, 8) }}</span>
+                    </div>
+                    <div class="card-meta mono">
+                      <span>{{ timeAgo(s.updatedAt) }}</span>
+                      @if (s.messageCount !== null) {
+                        <span class="dim">·</span>
+                        <span>{{ s.messageCountExact ? '' : '~' }}{{ s.messageCount }} msg</span>
+                      }
+                      @if (s.model) {
+                        <span class="model-chip">{{ s.model }}</span>
+                      }
+                    </div>
+                  </article>
+                } @empty {
+                  <div class="track-empty">
+                    {{ track.installed ? 'No sessions — drop one here to migrate' : 'Agent offline' }}
+                  </div>
+                }
+
+                @if (track.sessions.length > collapsedLimit) {
+                  <button class="show-more mono" (click)="toggleShownFull(track.agentId)">
+                    {{
+                      isShownFull(track.agentId)
+                        ? '– show fewer'
+                        : '+ ' + (track.sessions.length - collapsedLimit) + ' more'
+                    }}
+                  </button>
+                }
+              </div>
+            </section>
           }
         </div>
-      </section>
-    } @empty {
-      <div class="lanes-empty">All agents hidden — tap a chip above to show one.</div>
-    }
+      } @else {
+        <div class="stage-empty">Select a project to see its agents.</div>
+      }
+    </section>
   </div>
 }
 
