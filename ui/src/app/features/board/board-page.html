@@ -63,7 +63,7 @@
 @if (store.board()) {
   <div class="board-split">
     <!-- ── project rail (master) ─────────────────────────────────────── -->
-    <aside class="project-rail">
+    <aside class="project-rail" [style.width.px]="railWidth()">
       <div class="rail-head">
         <input
           class="rail-search mono"
@@ -87,6 +87,7 @@
                 <span class="pe-live" [title]="p.liveCount + ' live'"></span>
               }
             </div>
+            <span class="pe-path mono">{{ p.path ?? 'location unknown' }}</span>
             <div class="pe-meta">
               <span class="pe-dots">
                 @for (a of p.agentIds; track a) {
@@ -101,6 +102,13 @@
         }
       </div>
     </aside>
+
+    <!-- draggable divider to resize the rail -->
+    <div
+      class="rail-resizer"
+      (mousedown)="startRailResize($event)"
+      title="Drag to resize"
+    ></div>
 
     <!-- ── project stage (detail) ────────────────────────────────────── -->
     <section class="project-stage">

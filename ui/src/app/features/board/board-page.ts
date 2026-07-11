@@ -16,6 +16,10 @@ const LANE_ACCENTS: Record<string, string> = {
 };
 
 const COLLAPSED_CARD_LIMIT = 6;
+const RAIL_WIDTH_DEFAULT = 276;
+const RAIL_WIDTH_MIN = 200;
+const RAIL_WIDTH_MAX = 520;
+const RAIL_WIDTH_KEY = 'portal.railWidth';
 
 /** One agent's sessions for the selected project (a column in the detail). */
 interface AgentTrack {
@@ -58,6 +62,8 @@ export class BoardPage {
   protected readonly projectFilter = signal('');
   /** explicitly selected project; null falls back to the most-recent one */
   protected readonly selectedId = signal<string | null>(null);
+  /** user-resizable width of the project rail, persisted across sessions */
+  protected readonly railWidth = signal(RAIL_WIDTH_DEFAULT);
 
   protected readonly preview = signal<CanonicalSession | null>(null);
   protected readonly previewLoading = signal<string | null>(null);
@@ -170,7 +176,31 @@ export class BoardPage {
   );
 
   constructor() {
+    const saved = Number(localStorage.getItem(RAIL_WIDTH_KEY));
+    if (saved >= RAIL_WIDTH_MIN && saved <= RAIL_WIDTH_MAX) this.railWidth.set(saved);
     void this.store.load();
+  }
+
+  /** Drag the divider between the rail and stage to resize the rail. */
+  protected startRailResize(ev: MouseEvent): void {
+    ev.preventDefault();
+    const startX = ev.clientX;
+    const startW = this.railWidth();
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    const onMove = (e: MouseEvent) => {
+      const w = Math.min(RAIL_WIDTH_MAX, Math.max(RAIL_WIDTH_MIN, startW + (e.clientX - startX)));
+      this.railWidth.set(w);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      localStorage.setItem(RAIL_WIDTH_KEY, String(this.railWidth()));
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   }
 
   protected dropListId(agentId: string): string {
