@@ -4,4 +4,4 @@
  * What a migration actually does. Native converts to a resumable session;
  * Brief writes a handoff document and starts a fresh target session.
  */
-export type MigrationKind = "native" | "brief";
+export type MigrationKind = "native" | "compacted_native" | "brief";

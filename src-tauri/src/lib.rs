@@ -1,4 +1,5 @@
 mod commands;
+mod naming;
 mod state;
 mod tray;
 
@@ -15,7 +16,9 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::env::temp_dir().join("agent-portal"));
-            app.manage(Arc::new(AppState::new(data_dir)));
+            let state = Arc::new(AppState::new(data_dir));
+            app.manage(state.clone());
+            naming::start(state, app.handle().clone());
             tray::init(app.handle())?;
 
             // Closing the main window hides it to the tray instead of quitting;

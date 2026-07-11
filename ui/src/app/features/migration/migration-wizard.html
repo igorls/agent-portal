@@ -18,7 +18,18 @@
         <button class="mode-card" (click)="choose('native')">
           <div class="mode-head"><span class="badge native">native</span></div>
           <div class="mode-title">Convert the session</div>
-          <p>Write a resumable session so {{ request().targetLabel }} continues with the full history.</p>
+          <p>
+            Write a resumable session so {{ request().targetLabel }} continues with the full
+            history.
+          </p>
+        </button>
+        <button class="mode-card" (click)="choose('compacted_native')">
+          <div class="mode-head"><span class="badge native">compacted native</span></div>
+          <div class="mode-title">Compact, then convert</div>
+          <p>
+            Summarize older history locally, preserve the recent tail, and write a smaller resumable
+            session.
+          </p>
         </button>
         <button class="mode-card" (click)="choose('brief')">
           <div class="mode-head"><span class="badge brief">brief</span></div>
@@ -29,8 +40,15 @@
     }
 
     @case ('planning') {
-      <div class="pane center"><span class="spinner"></span>
-        {{ mode() === 'brief' ? 'Building handoff brief…' : 'Analyzing session…' }}
+      <div class="pane center">
+        <span class="spinner"></span>
+        {{
+          mode() === 'brief'
+            ? 'Building handoff brief…'
+            : mode() === 'compacted_native'
+              ? 'Compacting session locally…'
+              : 'Analyzing session…'
+        }}
       </div>
     }
 
@@ -43,6 +61,9 @@
                 <div class="advisory-line">⚠ {{ w }}</div>
               }
               @if (oversized() && request().brief) {
+                <button class="switch-brief" (click)="switchToCompacted()">
+                  Compact and migrate natively →
+                </button>
                 <button class="switch-brief" (click)="switchToBrief()">
                   Use handoff brief instead →
                 </button>
@@ -50,16 +71,31 @@
             </div>
           }
 
-          @if (r.kind === 'native') {
+          @if (r.kind === 'native' || r.kind === 'compacted_native') {
             <div class="stat-row">
-              <div class="stat"><span class="n">{{ r.turnCount }}</span><span class="l">turns</span></div>
-              <div class="stat" [class.warn]="oversized()">
-                <span class="n">≈{{ fmtTokens(r.estimatedTokens) }}</span><span class="l">tokens</span>
-              </div>
               <div class="stat">
-                <span class="n">{{ r.unansweredToolCalls }}</span><span class="l">unanswered calls</span>
+                <span class="n">{{ r.turnCount }}</span
+                ><span class="l">turns</span>
               </div>
-              <div class="stat mode"><span class="badge native">native</span></div>
+              <div class="stat" [class.warn]="oversized()">
+                <span class="n">≈{{ fmtTokens(r.estimatedTokens) }}</span
+                ><span class="l">tokens</span>
+              </div>
+              @if (r.kind === 'compacted_native') {
+                <div class="stat">
+                  <span class="n">from ≈{{ fmtTokens(r.originalEstimatedTokens) }}</span
+                  ><span class="l">before compaction</span>
+                </div>
+              }
+              <div class="stat">
+                <span class="n">{{ r.unansweredToolCalls }}</span
+                ><span class="l">unanswered calls</span>
+              </div>
+              <div class="stat mode">
+                <span class="badge native">{{
+                  r.kind === 'compacted_native' ? 'compacted native' : 'native'
+                }}</span>
+              </div>
             </div>
 
             <h3>Content</h3>
@@ -73,7 +109,9 @@
               <h3>Will not transfer</h3>
               <ul class="losses">
                 @for (loss of r.predictedLosses; track $index) {
-                  <li><span class="code">{{ loss.code }}</span> {{ loss.detail }}</li>
+                  <li>
+                    <span class="code">{{ loss.code }}</span> {{ loss.detail }}
+                  </li>
                 }
               </ul>
             }
@@ -89,7 +127,9 @@
                   <input type="checkbox" [checked]="enhance()" (change)="toggleEnhance()" />
                   polish with local model
                   <span class="model mono">{{ ollama()?.defaultModel }}</span>
-                  @if (r.briefEnhanced) { <span class="on-tag">on</span> }
+                  @if (r.briefEnhanced) {
+                    <span class="on-tag">on</span>
+                  }
                 </label>
               } @else {
                 <span class="no-ollama">Ollama not detected — deterministic brief</span>
@@ -113,7 +153,8 @@
     }
 
     @case ('executing') {
-      <div class="pane center"><span class="spinner"></span>
+      <div class="pane center">
+        <span class="spinner"></span>
         {{ mode() === 'brief' ? 'Writing handoff…' : 'Writing session & verifying…' }}
       </div>
     }
@@ -139,7 +180,9 @@
             </div>
           }
           <h3>{{ res.kind === 'brief' ? 'Launch command' : 'Resume command' }}</h3>
-          <code class="resume">{{ res.resumeCommand.program }} {{ res.resumeCommand.args.join(' ') }}</code>
+          <code class="resume"
+            >{{ res.resumeCommand.program }} {{ res.resumeCommand.args.join(' ') }}</code
+          >
         </div>
         <footer>
           <button class="ghost" (click)="close()">Done</button>

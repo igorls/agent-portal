@@ -1,6 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { PortalCommands } from '../ipc/commands';
 import type { BoardSnapshot } from '../ipc/gen/BoardSnapshot';
+import { listen } from '@tauri-apps/api/event';
 
 @Injectable({ providedIn: 'root' })
 export class BoardStore {
@@ -13,12 +14,23 @@ export class BoardStore {
   /** true only before the very first data (cached or fresh) arrives */
   readonly coldLoading = signal(false);
 
+  constructor() {
+    void listen<void>('titles-updated', () => void this.reloadCached()).catch(() => {
+      /* Browser-only tests do not expose Tauri events. */
+    });
+  }
+
+  private async reloadCached(): Promise<void> {
+    const cached = await this.commands.getCachedBoard().catch(() => null);
+    if (cached) this.board.set(cached);
+  }
+
   readonly totalSessions = computed(() => {
     const board = this.board();
     if (!board) return 0;
     return board.lanes.reduce(
       (acc, lane) => acc + lane.projects.reduce((a, p) => a + p.sessions.length, 0),
-      0
+      0,
     );
   });
 

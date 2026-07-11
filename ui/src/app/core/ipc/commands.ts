@@ -11,7 +11,7 @@ import type { MigrationResult } from './gen/MigrationResult';
 import type { OllamaStatus } from './gen/OllamaStatus';
 import type { UndoReport } from './gen/UndoReport';
 
-export type MigrationMode = 'native' | 'brief';
+export type MigrationMode = 'native' | 'compacted_native' | 'brief';
 
 /**
  * Typed wrappers for every Tauri command. Command names here must stay in
@@ -40,7 +40,7 @@ export class PortalCommands {
   getSessionPreview(
     agentId: string,
     nativeId: string,
-    storePath?: string
+    storePath?: string,
   ): Promise<CanonicalSession> {
     return this.tauri.invoke<CanonicalSession>('get_session_preview', {
       agentId,
@@ -58,7 +58,7 @@ export class PortalCommands {
     sourceNativeId: string,
     targetAgent: string,
     mode: MigrationMode,
-    opts: { enhance?: boolean; sourceStorePath?: string } = {}
+    opts: { enhance?: boolean; sourceStorePath?: string } = {},
   ): Promise<DryRunReport> {
     return this.tauri.invoke<DryRunReport>('plan_migration', {
       sourceAgent,

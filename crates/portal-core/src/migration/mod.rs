@@ -1,4 +1,5 @@
 pub mod brief;
+pub mod compact;
 pub mod engine;
 pub mod ledger;
 pub mod ollama;

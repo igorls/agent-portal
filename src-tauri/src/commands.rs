@@ -53,7 +53,10 @@ pub async fn refresh_board(
 ) -> Result<BoardSnapshot, PortalError> {
     let s = state.inner().clone();
     run_blocking(move || {
-        let board = s.registry.board(&s.env);
+        let mut board = s.registry.board(&s.env);
+        if let Err(e) = s.index.apply_generated_titles(&mut board) {
+            eprintln!("failed to apply generated titles: {e}");
+        }
         s.cache_installations(board.lanes.iter().filter_map(|lane| {
             lane.agent
                 .installation
@@ -116,6 +119,7 @@ pub async fn plan_migration(
     run_blocking(move || {
         let kind = match mode.as_str() {
             "brief" => MigrationKind::Brief,
+            "compacted_native" => MigrationKind::CompactedNative,
             _ => MigrationKind::Native,
         };
         let source_adapter = s

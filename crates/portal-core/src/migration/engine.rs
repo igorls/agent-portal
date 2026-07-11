@@ -17,7 +17,7 @@ use crate::migration::types::{
     ArtifactKind, BlockCensus, DryRunReport, MigrationKind, MigrationResult, UndoReport,
     VerifyGrade, WriteOptions, WrittenArtifact,
 };
-use crate::migration::{brief, ollama, verify};
+use crate::migration::{brief, compact, ollama, verify};
 use crate::util::paths::{atomic_write, quick_hash};
 
 /// Whether and how to run the optional local-LLM enrichment of a brief.
@@ -78,9 +78,9 @@ pub fn estimate_tokens(session: &CanonicalSession) -> u32 {
             chars += match block {
                 Block::Text { text } => text.len() as u64,
                 Block::Thinking { text, .. } => text.len() as u64,
-                Block::ToolCall { name, arguments, .. } => {
-                    (name.len() + tool_args_text(arguments).len()) as u64
-                }
+                Block::ToolCall {
+                    name, arguments, ..
+                } => (name.len() + tool_args_text(arguments).len()) as u64,
                 Block::ToolResult { output, .. } => tool_output_text(output).len() as u64,
                 Block::Compaction { summary } => summary.len() as u64,
                 Block::Meta { .. } => 0,
@@ -100,7 +100,7 @@ pub fn plan(
     kind: MigrationKind,
     brief_cfg: &BriefConfig,
 ) -> Result<PlannedMigration> {
-    let session = source_adapter.read_session(source_inst, locator)?;
+    let mut session = source_adapter.read_session(source_inst, locator)?;
 
     let issues = session.validate();
     if !issues.is_empty() {
@@ -135,8 +135,43 @@ pub fn plan(
     // A native migration loads the whole transcript into the target at once; if
     // the estimate runs well past the target's default window, nudge toward a
     // brief instead of letting the user hit an unloadable session.
-    let estimated_tokens = estimate_tokens(&session);
+    let original_estimated_tokens = estimate_tokens(&session);
     let target_context_tokens = target_adapter.capabilities().context_tokens;
+    if kind == MigrationKind::CompactedNative {
+        // Reserve room for the bounded summary and target-agent overhead.
+        let budget = target_context_tokens.unwrap_or(128_000).saturating_mul(50) / 100;
+        let mut tail_chars = 0_u64;
+        let mut keep_turns = 0_usize;
+        for turn in session.timeline.iter().rev() {
+            let chars: u64 = turn
+                .blocks
+                .iter()
+                .map(|b| match b {
+                    Block::Text { text } | Block::Thinking { text, .. } => text.len() as u64,
+                    Block::ToolCall {
+                        name, arguments, ..
+                    } => (name.len() + tool_args_text(arguments).len()) as u64,
+                    Block::ToolResult { output, .. } => tool_output_text(output).len() as u64,
+                    Block::Compaction { summary } => summary.len() as u64,
+                    Block::Meta { .. } => 0,
+                })
+                .sum();
+            if keep_turns >= 6 && (tail_chars + chars) / 4 > budget as u64 {
+                break;
+            }
+            tail_chars += chars;
+            keep_turns += 1;
+        }
+        if keep_turns < session.timeline.len() {
+            let prefix = compact::split_index(&session, keep_turns);
+            keep_turns = session.timeline.len() - prefix;
+            let deterministic = compact::deterministic_summary(&session, prefix);
+            let summary = ollama::compact(&brief_cfg.base_url, &brief_cfg.model, &deterministic)
+                .unwrap_or(deterministic);
+            session = compact::compact_session(session, keep_turns, summary);
+        }
+    }
+    let estimated_tokens = estimate_tokens(&session);
     if kind == MigrationKind::Native {
         if let Some(limit) = target_context_tokens {
             if estimated_tokens > limit {
@@ -164,6 +199,7 @@ pub fn plan(
         predicted_losses: session.losses.clone(),
         unanswered_tool_calls: unanswered.len() as u32,
         estimated_tokens,
+        original_estimated_tokens,
         target_context_tokens,
         warnings,
         target_path_hint: String::new(),
@@ -174,7 +210,7 @@ pub fn plan(
 
     let mut brief_text = None;
     match kind {
-        MigrationKind::Native => {
+        MigrationKind::Native | MigrationKind::CompactedNative => {
             let write_plan = target_adapter.plan_write(target_inst, &session)?;
             report
                 .predicted_losses
@@ -254,7 +290,9 @@ pub fn execute(
     ledger: &Ledger,
 ) -> Result<MigrationResult> {
     match planned.kind {
-        MigrationKind::Native => execute_native(planned, target_adapter, target_inst, ledger),
+        MigrationKind::Native | MigrationKind::CompactedNative => {
+            execute_native(planned, target_adapter, target_inst, ledger)
+        }
         MigrationKind::Brief => execute_brief(planned, target_adapter, target_inst, ledger),
     }
 }
@@ -388,7 +426,7 @@ fn execute_native(
 
     Ok(MigrationResult {
         migration_id,
-        kind: MigrationKind::Native,
+        kind: planned.kind,
         target_agent: planned.target_agent.clone(),
         target_native_id: written.native_id,
         target_path: written.primary_path,

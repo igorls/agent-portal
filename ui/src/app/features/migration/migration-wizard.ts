@@ -54,7 +54,7 @@ export class MigrationWizard {
     const r = this.report();
     return (
       !!r &&
-      r.kind === 'native' &&
+      (r.kind === 'native' || r.kind === 'compacted_native') &&
       r.targetContextTokens != null &&
       r.estimatedTokens > r.targetContextTokens
     );
@@ -67,6 +67,10 @@ export class MigrationWizard {
   /** Re-plan as a handoff brief (offered when a native migration is oversized). */
   protected switchToBrief(): void {
     if (this.request().brief) this.choose('brief');
+  }
+
+  protected switchToCompacted(): void {
+    if (this.request().native) this.choose('compacted_native');
   }
 
   constructor() {
@@ -112,7 +116,7 @@ export class MigrationWizard {
         req.source.nativeId,
         req.targetAgent,
         mode,
-        { enhance: mode === 'brief' && this.enhance(), sourceStorePath: req.source.storePath }
+        { enhance: mode === 'brief' && this.enhance(), sourceStorePath: req.source.storePath },
       );
       this.report.set(report);
       this.stage.set('review');

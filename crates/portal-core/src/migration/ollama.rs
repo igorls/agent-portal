@@ -98,6 +98,50 @@ pub fn enrich(base_url: &str, model: &str, deterministic_brief: &str) -> Option<
     Some(strip_code_fence(text))
 }
 
+/// Improve an extractive compaction summary. The deterministic text remains
+/// the fallback and constrains the model to facts already present.
+pub fn compact(base_url: &str, model: &str, deterministic: &str) -> Option<String> {
+    let generated = generate(base_url, model,
+        "Summarize coding-session history for a successor agent. Preserve goals, decisions, file paths, commands, failures, completed work, and next steps. Never invent facts. Output only a concise markdown summary.",
+        deterministic, 90)?;
+    Some(generated.chars().take(24_000).collect())
+}
+
+/// Generate a short title describing the work at the current tail.
+pub fn title(base_url: &str, model: &str, recent_activity: &str) -> Option<String> {
+    let text = generate(base_url, model,
+        "Name the current coding task from its recent activity. Return only a specific 3-8 word title, no quotes, punctuation suffix, or explanation. Describe the latest work, not the initial request.",
+        recent_activity, 30)?;
+    let title = text
+        .lines()
+        .next()?
+        .trim()
+        .trim_matches(['\"', '\'', '`'])
+        .to_string();
+    if title.len() < 3 || title.len() > 80 {
+        None
+    } else {
+        Some(title)
+    }
+}
+
+fn generate(
+    base_url: &str,
+    model: &str,
+    system: &str,
+    prompt: &str,
+    timeout_secs: u64,
+) -> Option<String> {
+    let body = serde_json::json!({"model": model, "system": system, "prompt": prompt, "stream": false, "options": {"temperature": 0.1}});
+    let resp = ureq::post(&format!("{base_url}/api/generate"))
+        .timeout(Duration::from_secs(timeout_secs))
+        .send_json(body)
+        .ok()?;
+    let json: serde_json::Value = resp.into_json().ok()?;
+    let text = json.get("response")?.as_str()?.trim();
+    (!text.is_empty()).then(|| strip_code_fence(text))
+}
+
 /// Models sometimes wrap the whole output in a ```markdown fence; unwrap it.
 fn strip_code_fence(text: &str) -> String {
     let trimmed = text.trim();

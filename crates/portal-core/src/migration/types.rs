@@ -56,6 +56,7 @@ pub struct WriteOptions {
 #[serde(rename_all = "snake_case")]
 pub enum MigrationKind {
     Native,
+    CompactedNative,
     Brief,
 }
 
@@ -130,6 +131,8 @@ pub struct DryRunReport {
     pub unanswered_tool_calls: u32,
     /// Rough token estimate of the session's transferable content (chars/4).
     pub estimated_tokens: u32,
+    /// Source estimate before compacted-native transformation.
+    pub original_estimated_tokens: u32,
     /// The target's approximate default context window, when known — for the UI
     /// to show alongside the estimate.
     pub target_context_tokens: Option<u32>,

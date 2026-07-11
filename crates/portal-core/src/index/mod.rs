@@ -31,6 +31,14 @@ impl IndexStore {
                      id INTEGER PRIMARY KEY CHECK (id = 1),
                      snapshot_json TEXT NOT NULL,
                      updated_at INTEGER NOT NULL
+                 );
+                 CREATE TABLE IF NOT EXISTS generated_titles (
+                     agent_id TEXT NOT NULL,
+                     native_id TEXT NOT NULL,
+                     title TEXT NOT NULL,
+                     source_revision TEXT NOT NULL,
+                     updated_at INTEGER NOT NULL,
+                     PRIMARY KEY (agent_id, native_id)
                  );",
             )
             .map_err(sql_err)
@@ -76,6 +84,63 @@ impl IndexStore {
             Ok(())
         })
     }
+
+    pub fn upsert_generated_title(
+        &self,
+        agent_id: &str,
+        native_id: &str,
+        title: &str,
+        source_revision: &str,
+    ) -> Result<()> {
+        self.with_conn(|conn| {
+            conn.execute("INSERT INTO generated_titles (agent_id,native_id,title,source_revision,updated_at) VALUES (?1,?2,?3,?4,?5) ON CONFLICT(agent_id,native_id) DO UPDATE SET title=?3,source_revision=?4,updated_at=?5",
+                rusqlite::params![agent_id,native_id,title,source_revision,chrono::Utc::now().timestamp_millis()]).map_err(sql_err)?;
+            Ok(())
+        })
+    }
+
+    /// 0 = never named, 1 = stale, 2 = current.
+    pub fn title_refresh_priority(
+        &self,
+        agent_id: &str,
+        native_id: &str,
+        source_revision: &str,
+    ) -> u8 {
+        self.with_conn(|conn| {
+            let revision: Option<String> = conn
+                .query_row(
+                    "SELECT source_revision FROM generated_titles WHERE agent_id=?1 AND native_id=?2",
+                    rusqlite::params![agent_id, native_id],
+                    |r| r.get(0),
+                )
+                .ok();
+            Ok(match revision { None => 0, Some(r) if r != source_revision => 1, Some(_) => 2 })
+        })
+        .unwrap_or(0)
+    }
+
+    pub fn apply_generated_titles(&self, board: &mut BoardSnapshot) -> Result<()> {
+        self.with_conn(|conn| {
+            let mut stmt = conn.prepare("SELECT title,source_revision FROM generated_titles WHERE agent_id=?1 AND native_id=?2").map_err(sql_err)?;
+            for lane in &mut board.lanes { for project in &mut lane.projects { for session in &mut project.sessions {
+                let row: Option<(String,String)> = stmt.query_row(rusqlite::params![session.agent_id,session.native_id], |r| Ok((r.get(0)?,r.get(1)?))).ok();
+                if let Some((title,_)) = row.filter(|(_,revision)| *revision == session_revision(session)) { session.title = Some(title); }
+            }}}
+            Ok(())
+        })
+    }
+}
+
+pub fn session_revision(session: &crate::dto::SessionSummary) -> String {
+    format!(
+        "{}:{}:{}",
+        session.size_bytes,
+        session
+            .updated_at
+            .map(|t| t.timestamp_millis())
+            .unwrap_or_default(),
+        session.message_count.unwrap_or_default()
+    )
 }
 
 fn sql_err(e: rusqlite::Error) -> PortalError {
@@ -106,5 +171,65 @@ mod tests {
         assert!(reopened.cached_board().is_some());
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn generated_titles_overlay_board_without_touching_native_titles() {
+        let dir = std::env::temp_dir().join(format!("portal-title-{}", uuid::Uuid::now_v7()));
+        let store = IndexStore::open(&dir).unwrap();
+        store
+            .upsert_generated_title("codex", "s1", "Fix migration verification", "42:0:0")
+            .unwrap();
+        let mut board = BoardSnapshot {
+            lanes: vec![crate::dto::Lane {
+                agent: crate::dto::AgentDescriptor {
+                    id: "codex".into(),
+                    display_name: "Codex".into(),
+                    capabilities: crate::dto::Capabilities {
+                        store_kind: crate::dto::StoreKind::JsonlPerSession,
+                        read: crate::dto::SupportLevel::Full,
+                        write_native: crate::dto::SupportLevel::Full,
+                        watch: false,
+                        launch_resume: true,
+                        launch_new: true,
+                        context_tokens: None,
+                        write_confidence: None,
+                        version_range_tested: String::new(),
+                        notes: vec![],
+                    },
+                    installation: None,
+                },
+                projects: vec![crate::dto::ProjectGroup {
+                    key: "p".into(),
+                    label: "p".into(),
+                    cwd_normalized: None,
+                    sessions: vec![crate::dto::SessionSummary {
+                        agent_id: "codex".into(),
+                        native_id: "s1".into(),
+                        project_key: "p".into(),
+                        title: Some("initial prompt".into()),
+                        cwd: None,
+                        git_branch: None,
+                        model: None,
+                        created_at: None,
+                        updated_at: None,
+                        message_count: None,
+                        message_count_exact: false,
+                        size_bytes: 42,
+                        store_path: "x".into(),
+                        maybe_live: false,
+                    }],
+                }],
+                error: None,
+            }],
+            feasibility: vec![],
+            generated_at: chrono::Utc::now(),
+        };
+        store.apply_generated_titles(&mut board).unwrap();
+        assert_eq!(
+            board.lanes[0].projects[0].sessions[0].title.as_deref(),
+            Some("Fix migration verification")
+        );
+        std::fs::remove_dir_all(dir).ok();
     }
 }

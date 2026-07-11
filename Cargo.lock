@@ -2295,6 +2295,7 @@ dependencies = [
 name = "portal-tauri"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "portal-adapters",
  "portal-core",
  "serde",
