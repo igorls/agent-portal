@@ -119,6 +119,33 @@ impl IndexStore {
         .unwrap_or(0)
     }
 
+    /// Every generated title on record, for monitoring the naming worker.
+    pub fn all_generated_titles(&self) -> Result<Vec<StoredTitle>> {
+        self.with_conn(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT agent_id,native_id,title,source_revision,updated_at FROM generated_titles",
+                )
+                .map_err(sql_err)?;
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok(StoredTitle {
+                        agent_id: r.get(0)?,
+                        native_id: r.get(1)?,
+                        title: r.get(2)?,
+                        source_revision: r.get(3)?,
+                        updated_at: r.get(4)?,
+                    })
+                })
+                .map_err(sql_err)?;
+            let mut out = Vec::new();
+            for row in rows {
+                out.push(row.map_err(sql_err)?);
+            }
+            Ok(out)
+        })
+    }
+
     pub fn apply_generated_titles(&self, board: &mut BoardSnapshot) -> Result<()> {
         self.with_conn(|conn| {
             let mut stmt = conn.prepare("SELECT title,source_revision FROM generated_titles WHERE agent_id=?1 AND native_id=?2").map_err(sql_err)?;
@@ -129,6 +156,16 @@ impl IndexStore {
             Ok(())
         })
     }
+}
+
+/// A row of the `generated_titles` table.
+pub struct StoredTitle {
+    pub agent_id: String,
+    pub native_id: String,
+    pub title: String,
+    pub source_revision: String,
+    /// Unix milliseconds when the title was written.
+    pub updated_at: i64,
 }
 
 pub fn session_revision(session: &crate::dto::SessionSummary) -> String {
@@ -230,6 +267,31 @@ mod tests {
             board.lanes[0].projects[0].sessions[0].title.as_deref(),
             Some("Fix migration verification")
         );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn all_generated_titles_lists_every_row() {
+        let dir = std::env::temp_dir().join(format!("portal-titles-{}", uuid::Uuid::now_v7()));
+        let store = IndexStore::open(&dir).unwrap();
+        assert!(store.all_generated_titles().unwrap().is_empty());
+
+        store
+            .upsert_generated_title("codex", "s1", "First title", "1:0:0")
+            .unwrap();
+        store
+            .upsert_generated_title("claude-code", "s2", "Second title", "2:0:0")
+            .unwrap();
+        // Re-titling the same session updates in place, not appends.
+        store
+            .upsert_generated_title("codex", "s1", "First title, refreshed", "3:0:0")
+            .unwrap();
+
+        let rows = store.all_generated_titles().unwrap();
+        assert_eq!(rows.len(), 2);
+        let s1 = rows.iter().find(|t| t.native_id == "s1").unwrap();
+        assert_eq!(s1.title, "First title, refreshed");
+        assert_eq!(s1.source_revision, "3:0:0");
         std::fs::remove_dir_all(dir).ok();
     }
 }

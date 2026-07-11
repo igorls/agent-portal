@@ -181,3 +181,264 @@
   font-size: 0.68rem;
   color: var(--text-lo);
 }
+
+.naming {
+  margin-top: 40px;
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+
+  .sec-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+
+    h2 {
+      margin: 0;
+      font-size: 1.02rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+  }
+
+  .sub {
+    margin: 0 0 18px;
+    font-size: 0.8rem;
+    color: var(--text-mid);
+    max-width: 60ch;
+    line-height: 1.5;
+  }
+}
+
+.pill {
+  font-size: 0.66rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: 100px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-lo);
+
+  &.p-ok {
+    color: var(--ok);
+    background: rgb(87 201 138 / 12%);
+    border-color: rgb(87 201 138 / 30%);
+  }
+  &.p-active {
+    color: var(--warn);
+    background: rgb(224 168 90 / 12%);
+    border-color: rgb(224 168 90 / 30%);
+  }
+  &.p-off {
+    color: var(--danger);
+    background: rgb(229 112 122 / 10%);
+    border-color: rgb(229 112 122 / 28%);
+  }
+}
+
+.progress {
+  margin-bottom: 16px;
+
+  .bar {
+    height: 8px;
+    border-radius: 100px;
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    overflow: hidden;
+
+    .fill {
+      height: 100%;
+      background: var(--ok);
+      border-radius: 100px;
+      transition: width 0.4s ease;
+    }
+
+    // While a pass runs, sweep a sheen across the bar so it reads as "working".
+    &.working {
+      border-color: rgb(224 168 90 / 40%);
+
+      .fill {
+        background: linear-gradient(
+          90deg,
+          var(--warn) 0%,
+          color-mix(in srgb, var(--warn) 55%, white) 50%,
+          var(--warn) 100%
+        );
+        background-size: 200% 100%;
+        animation: naming-sweep 1.1s linear infinite;
+      }
+    }
+  }
+
+  .progress-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 7px;
+    font-size: 0.72rem;
+    color: var(--text-lo);
+
+    .pct {
+      color: var(--text-mid);
+    }
+
+    .recent {
+      color: var(--accent);
+    }
+
+    .proj {
+      color: var(--text-mid);
+    }
+
+    .working-now {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--warn);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+
+      .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--warn);
+        flex-shrink: 0;
+        animation: naming-pulse 1s ease-in-out infinite;
+      }
+    }
+  }
+}
+
+@keyframes naming-sweep {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+
+@keyframes naming-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.stats {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+
+  .stat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 12px 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+
+    .num {
+      font-size: 1.25rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .cap {
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-lo);
+    }
+  }
+}
+
+.lib-note {
+  margin: 0 0 16px;
+  font-size: 0.7rem;
+  color: var(--text-lo);
+}
+
+.state.small {
+  padding: 32px 20px;
+  font-size: 0.8rem;
+
+  .glyph {
+    font-size: 1.4rem;
+  }
+}
+
+.titles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+
+  &.stale {
+    opacity: 0.7;
+  }
+
+  .ttl {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    font-size: 0.86rem;
+    font-weight: 500;
+    overflow: hidden;
+
+    .proj {
+      font-size: 0.66rem;
+      font-weight: 400;
+      color: var(--text-lo);
+      font-family: var(--font-mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .meta {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    color: var(--text-lo);
+
+    .agent {
+      color: var(--text-mid);
+    }
+  }
+
+  .stale-tag {
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.6rem;
+    color: var(--warn);
+    background: rgb(224 168 90 / 12%);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+}

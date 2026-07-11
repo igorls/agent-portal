@@ -49,4 +49,98 @@
       }
     </ul>
   }
+
+  <section class="naming">
+    <div class="sec-head">
+      <h2>Session naming</h2>
+      @if (naming(); as n) {
+        <span class="pill" [class]="'p-' + namingStatus().tone">{{ namingStatus().label }}</span>
+      }
+    </div>
+    <p class="sub">
+      A local model reads each session's recent activity and gives it a short title — all offline, your sessions are never sent anywhere. Sessions touched in the last 24 hours are named first, at a faster rate.
+    </p>
+
+    @if (namingError(); as e) {
+      <div class="err mono">{{ e }}</div>
+    }
+
+    @if (naming(); as n) {
+      <div class="progress">
+        <div class="bar" [class.working]="n.progress.active">
+          <div class="fill" [style.width.%]="coverage()"></div>
+        </div>
+        <div class="progress-meta">
+          <span class="pct">{{ coverage() }}% named · last {{ n.windowHours }}h</span>
+          @if (n.progress.active) {
+            <span class="working-now mono">
+              <span class="dot"></span>
+              @if (n.progress.batchTotal > 0) {
+                Naming {{ n.progress.batchDone + 1 }}/{{ n.progress.batchTotal }}
+              } @else {
+                Naming
+              }
+              @if (n.progress.currentProject) {
+                · <span class="proj">{{ n.progress.currentProject }}</span>
+              }
+              @if (n.progress.current) { · {{ n.progress.current }} }
+            </span>
+          } @else if (nextPassIn(); as secs) {
+            <span class="next mono">
+              @if (n.recent.pending > 0) {
+                <span class="recent">{{ n.recent.pending }} queued</span> ·
+              }
+              Next pass in {{ secs }}s
+            </span>
+          } @else if (n.progress.lastPassAt) {
+            <span class="next mono">Last pass {{ n.progress.lastPassAt | date: 'HH:mm:ss' }}</span>
+          }
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span class="num">{{ n.recent.named }}</span><span class="cap">named</span></div>
+        <div class="stat"><span class="num">{{ n.recent.stale }}</span><span class="cap">stale</span></div>
+        <div class="stat"><span class="num">{{ n.recent.pending }}</span><span class="cap">pending</span></div>
+        <div class="stat"><span class="num">{{ n.recent.total }}</span><span class="cap">last {{ n.windowHours }}h</span></div>
+      </div>
+      <p class="lib-note">
+        {{ n.overall.named }} of {{ n.overall.total }} sessions named across your whole library.
+      </p>
+
+      @if (n.entries.length === 0) {
+        <div class="state empty small">
+          <span class="glyph">✎</span>
+          @if (!n.ollamaAvailable) {
+            No titles yet — start Ollama to enable naming.
+          } @else if (!n.modelPresent) {
+            No titles yet — install the "{{ n.model }}" model to enable naming.
+          } @else {
+            No titles generated yet. The worker names sessions in the background.
+          }
+        </div>
+      } @else {
+        <ul class="titles">
+          @for (t of n.entries; track t.agentId + t.nativeId) {
+            <li class="title-row" [class.stale]="!t.current">
+              <span class="ttl">
+                {{ t.title }}
+                @if (t.project) {
+                  <span class="proj">{{ t.project }}</span>
+                }
+              </span>
+              <span class="meta mono">
+                <span class="agent">{{ agentLabel(t.agentId) }}</span>
+                <span class="id" [title]="t.nativeId">{{ t.nativeId.slice(0, 8) }}</span>
+                @if (!t.current) {
+                  <span class="stale-tag">stale</span>
+                }
+                <span class="when">{{ t.updatedAt | date: 'MMM d, HH:mm' }}</span>
+              </span>
+            </li>
+          }
+        </ul>
+      }
+    }
+  </section>
 </div>

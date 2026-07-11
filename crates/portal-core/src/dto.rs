@@ -164,3 +164,82 @@ pub struct PairFeasibility {
     /// Confidence surfaced from the target adapter (High/Medium/Experimental).
     pub write_confidence: Option<String>,
 }
+
+/// Snapshot of the background session-naming worker, surfaced in the Activity
+/// view so the local-LLM titling can be watched and understood.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct NamingReport {
+    /// A local Ollama server is reachable.
+    pub ollama_available: bool,
+    /// The model configured for naming.
+    pub model: String,
+    /// That model is installed on the server. Naming stays idle without it.
+    pub model_present: bool,
+    /// Length of the recency window (hours) the worker prioritizes.
+    pub window_hours: u32,
+    /// Counts for sessions touched within the recency window — the worker's
+    /// actual queue, and what the panel leads with.
+    pub recent: NamingCounts,
+    /// Counts across the whole session library — context, not an active backlog.
+    pub overall: NamingCounts,
+    /// Live state of the worker (running now, timing of passes).
+    pub progress: NamingProgress,
+    /// Generated titles for sessions still on the board, newest first.
+    pub entries: Vec<NamingEntry>,
+}
+
+/// Named / stale / pending breakdown of a set of sessions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct NamingCounts {
+    /// Sessions in this set.
+    pub total: u32,
+    /// With an up-to-date generated title.
+    pub named: u32,
+    /// With a title that went stale (the session changed since).
+    pub stale: u32,
+    /// Never named yet.
+    pub pending: u32,
+}
+
+/// Live state of the background naming worker. Distinguishes "actively naming
+/// right now" from "queued work, but the worker is asleep between passes" —
+/// the two look identical from counts alone.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct NamingProgress {
+    /// A pass is running right now (the model is being called).
+    pub active: bool,
+    /// Label of the session being named this instant, when active.
+    pub current: Option<String>,
+    /// Project of the session being named this instant, when active.
+    pub current_project: Option<String>,
+    /// Sessions named so far in the current (or most recent) pass.
+    pub batch_done: u32,
+    /// Sessions the current (or most recent) pass set out to name.
+    pub batch_total: u32,
+    /// When the last pass finished.
+    pub last_pass_at: Option<DateTime<Utc>>,
+    /// When the next pass is scheduled to start.
+    pub next_pass_at: Option<DateTime<Utc>>,
+}
+
+/// One generated session title.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct NamingEntry {
+    pub agent_id: String,
+    pub native_id: String,
+    /// Project (workspace) the session belongs to.
+    pub project: String,
+    pub title: String,
+    /// The title matches the session's current revision (else it is stale).
+    pub current: bool,
+    /// When the worker last wrote this title.
+    pub updated_at: DateTime<Utc>,
+}

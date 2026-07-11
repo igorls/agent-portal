@@ -11,7 +11,7 @@ estimatedTokens: number,
 /**
  * Source estimate before compacted-native transformation.
  */
-originalEstimatedTokens: number,
+originalEstimatedTokens: number, 
 /**
  * The target's approximate default context window, when known — for the UI
  * to show alongside the estimate.

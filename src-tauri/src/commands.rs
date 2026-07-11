@@ -1,7 +1,11 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use portal_core::adapter::SessionLocator;
-use portal_core::dto::{AgentDescriptor, BoardSnapshot, Health};
+use portal_core::dto::{
+    AgentDescriptor, BoardSnapshot, Health, NamingCounts, NamingEntry, NamingReport,
+};
+use portal_core::index::session_revision;
 use portal_core::error::PortalError;
 use portal_core::ir::CanonicalSession;
 use portal_core::launch;
@@ -267,6 +271,99 @@ pub async fn list_activity(
         let mut entries = s.ledger.list()?;
         entries.reverse(); // newest first
         Ok(entries)
+    })
+    .await
+}
+
+/// Snapshot of the background session-naming worker for the Activity view:
+/// whether the local model is available, how many sessions are named / stale /
+/// pending, and the generated titles themselves.
+#[tauri::command]
+pub async fn naming_status(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<NamingReport, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let settings = s.settings.load();
+        let status = ollama::status(&settings.ollama_host);
+        let model_present = status.models.iter().any(|m| m == &settings.ollama_model);
+
+        // The cached board is what the worker overlays titles onto; fall back to
+        // a fresh scan only on a cold cache.
+        let board = s
+            .index
+            .cached_board()
+            .unwrap_or_else(|| s.registry.board(&s.env));
+
+        let titles = s.index.all_generated_titles()?;
+        let title_by_session: HashMap<(&str, &str), &portal_core::index::StoredTitle> = titles
+            .iter()
+            .map(|t| ((t.agent_id.as_str(), t.native_id.as_str()), t))
+            .collect();
+
+        // Split counts into the recency window (the worker's active queue) and
+        // the whole library (context). The lifetime "pending" is huge and not a
+        // real backlog the worker chases, so it must not read as one.
+        let cutoff =
+            chrono::Utc::now() - chrono::Duration::hours(crate::naming::RECENT_WINDOW_HOURS);
+        let mut recent = NamingCounts::default();
+        let mut overall = NamingCounts::default();
+        // Per session still on the board: its revision and project label.
+        let mut info: HashMap<(&str, &str), (String, &str)> = HashMap::new();
+        for (project, session) in board
+            .lanes
+            .iter()
+            .flat_map(|l| l.projects.iter())
+            .flat_map(|p| p.sessions.iter().map(move |s| (p.label.as_str(), s)))
+        {
+            let revision = session_revision(session);
+            let key = (session.agent_id.as_str(), session.native_id.as_str());
+            let is_recent = session.updated_at.is_some_and(|t| t >= cutoff);
+            overall.total += 1;
+            if is_recent {
+                recent.total += 1;
+            }
+            let bump = |c: &mut NamingCounts| match title_by_session.get(&key) {
+                None => c.pending += 1,
+                Some(t) if t.source_revision == revision => c.named += 1,
+                Some(_) => c.stale += 1,
+            };
+            bump(&mut overall);
+            if is_recent {
+                bump(&mut recent);
+            }
+            info.insert(key, (revision, project));
+        }
+
+        // Only surface titles for sessions still on the board; a title for a
+        // deleted session is noise here.
+        let mut entries: Vec<NamingEntry> = titles
+            .iter()
+            .filter_map(|t| {
+                let (revision, project) = info.get(&(t.agent_id.as_str(), t.native_id.as_str()))?;
+                Some(NamingEntry {
+                    agent_id: t.agent_id.clone(),
+                    native_id: t.native_id.clone(),
+                    project: project.to_string(),
+                    title: t.title.clone(),
+                    current: *revision == t.source_revision,
+                    updated_at: chrono::DateTime::from_timestamp_millis(t.updated_at)
+                        .unwrap_or_default(),
+                })
+            })
+            .collect();
+        entries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+
+        Ok(NamingReport {
+            ollama_available: status.available,
+            model: settings.ollama_model,
+            model_present,
+            window_hours: crate::naming::RECENT_WINDOW_HOURS as u32,
+            recent,
+            overall,
+            progress: s.naming_progress(),
+            entries,
+        })
     })
     .await
 }

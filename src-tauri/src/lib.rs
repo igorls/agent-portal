@@ -49,6 +49,7 @@ pub fn run() {
             commands::launch_session,
             commands::launch_command,
             commands::list_activity,
+            commands::naming_status,
             commands::show_main_window
         ])
         .run(tauri::generate_context!())

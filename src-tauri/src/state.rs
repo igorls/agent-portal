@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use portal_core::adapter::{AgentAdapter, HostEnv};
-use portal_core::dto::Installation;
+use portal_core::dto::{Installation, NamingProgress};
 use portal_core::index::IndexStore;
 use portal_core::migration::engine::PlannedMigration;
 use portal_core::migration::ledger::Ledger;
@@ -20,6 +20,8 @@ pub struct AppState {
     installations: Mutex<HashMap<String, Installation>>,
     /// Dry-run plans awaiting execute, keyed by plan_id.
     plans: Mutex<HashMap<String, Arc<PlannedMigration>>>,
+    /// Live state of the background naming worker, surfaced in the Activity view.
+    naming: Mutex<NamingProgress>,
 }
 
 impl AppState {
@@ -37,7 +39,20 @@ impl AppState {
             index,
             installations: Mutex::new(HashMap::new()),
             plans: Mutex::new(HashMap::new()),
+            naming: Mutex::new(NamingProgress::default()),
         }
+    }
+
+    /// Snapshot the worker's live progress.
+    pub fn naming_progress(&self) -> NamingProgress {
+        self.naming.lock().unwrap().clone()
+    }
+
+    /// Update the worker's live progress and return the new snapshot.
+    pub fn update_naming_progress(&self, f: impl FnOnce(&mut NamingProgress)) -> NamingProgress {
+        let mut guard = self.naming.lock().unwrap();
+        f(&mut guard);
+        guard.clone()
     }
 
     pub fn adapter(&self, agent_id: &str) -> Option<Arc<dyn AgentAdapter>> {

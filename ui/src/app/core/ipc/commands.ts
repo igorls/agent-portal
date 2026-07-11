@@ -9,6 +9,7 @@ import type { DryRunReport } from './gen/DryRunReport';
 import type { Health } from './gen/Health';
 import type { LedgerEntry } from './gen/LedgerEntry';
 import type { MigrationResult } from './gen/MigrationResult';
+import type { NamingReport } from './gen/NamingReport';
 import type { OllamaStatus } from './gen/OllamaStatus';
 import type { UndoReport } from './gen/UndoReport';
 
@@ -97,5 +98,9 @@ export class PortalCommands {
 
   undoMigration(migrationId: string, force = false): Promise<UndoReport> {
     return this.tauri.invoke<UndoReport>('undo_migration', { migrationId, force });
+  }
+
+  namingStatus(): Promise<NamingReport> {
+    return this.tauri.invoke<NamingReport>('naming_status');
   }
 }
