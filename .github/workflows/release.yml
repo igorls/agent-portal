@@ -74,8 +74,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Agent Portal ${{ github.ref_name }}'
+          # Only a v* tag push creates/publishes a release. A workflow_dispatch
+          # run leaves these empty, so tauri-action just builds the installers as
+          # a dry run without publishing anything (matching this file's comment).
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('Agent Portal {0}', github.ref_name) || '' }}
           releaseBody: 'Download the installer for your platform from the assets below.'
           releaseDraft: false
           prerelease: false
