@@ -61,10 +61,13 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      # tauri build runs the beforeBuildCommand (pnpm --dir ui build), which
-      # needs the UI dependencies present first.
-      - name: Install frontend dependencies
-        run: pnpm --dir ui install --frozen-lockfile
+      # tauri-action drives the build via `pnpm tauri build`, so the root
+      # @tauri-apps/cli must be installed; the UI deps are needed for the
+      # beforeBuildCommand (pnpm --dir ui build).
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir ui install --frozen-lockfile
 
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
