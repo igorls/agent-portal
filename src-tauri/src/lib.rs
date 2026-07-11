@@ -41,6 +41,8 @@ pub fn run() {
             commands::refresh_board,
             commands::get_session_preview,
             commands::check_ollama,
+            commands::get_settings,
+            commands::save_settings,
             commands::plan_migration,
             commands::execute_migration,
             commands::undo_migration,

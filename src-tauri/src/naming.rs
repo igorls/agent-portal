@@ -25,8 +25,9 @@ pub fn start(state: Arc<AppState>, app: tauri::AppHandle) {
 }
 
 fn run_pass(state: &AppState) {
-    let status = ollama::status(ollama::DEFAULT_BASE_URL);
-    if !status.default_present {
+    let settings = state.settings.load();
+    let status = ollama::status(&settings.ollama_host);
+    if !status.models.iter().any(|m| m == &settings.ollama_model) {
         return;
     }
     let board = state.registry.board(&state.env);
@@ -71,8 +72,7 @@ fn run_pass(state: &AppState) {
             continue;
         };
         let activity = recent_activity(&session);
-        if let Some(title) =
-            ollama::title(ollama::DEFAULT_BASE_URL, ollama::DEFAULT_MODEL, &activity)
+        if let Some(title) = ollama::title(&settings.ollama_host, &settings.ollama_model, &activity)
         {
             let _ = state.index.upsert_generated_title(
                 &summary.agent_id,

@@ -6,4 +6,5 @@ pub mod ir;
 pub mod launch;
 pub mod migration;
 pub mod registry;
+pub mod settings;
 pub mod util;

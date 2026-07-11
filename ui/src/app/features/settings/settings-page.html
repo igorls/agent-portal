@@ -1,0 +1,59 @@
+<main class="settings-page">
+  <header>
+    <div>
+      <h1>Settings</h1>
+      <p>
+        Configure the local model used for session naming, compacted migrations, and handoff
+        enrichment.
+      </p>
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="panel loading">Loading settings…</div>
+  } @else {
+    <form class="panel" (submit)="save(); $event.preventDefault()">
+      <div class="section-title">Ollama</div>
+      <label>
+        <span>Host</span>
+        <input [formField]="settingsForm.ollamaHost" placeholder="http://localhost:11434" />
+        @if (settingsForm.ollamaHost().touched() && settingsForm.ollamaHost().errors().length) {
+          <small class="field-error">{{ settingsForm.ollamaHost().errors()[0].message }}</small>
+        }
+      </label>
+      <label>
+        <span>Model</span>
+        <input [formField]="settingsForm.ollamaModel" placeholder="gemma4:12b-it-qat" />
+        @if (settingsForm.ollamaModel().touched() && settingsForm.ollamaModel().errors().length) {
+          <small class="field-error">{{ settingsForm.ollamaModel().errors()[0].message }}</small>
+        }
+      </label>
+
+      @if (ollama(); as status) {
+        <div class="probe" [class.ok]="status.available" [class.bad]="!status.available">
+          <span class="dot"></span>
+          @if (status.available) {
+            Ollama reachable · {{ status.models.length }} model{{
+              status.models.length === 1 ? '' : 's'
+            }}
+            found
+          } @else {
+            Ollama is not reachable at this host
+          }
+        </div>
+      }
+      @if (error(); as message) {
+        <div class="error">{{ message }}</div>
+      }
+
+      <footer>
+        @if (saved()) {
+          <span class="saved">Saved and connection checked</span>
+        }
+        <button type="submit" [disabled]="settingsForm().invalid() || saving()">
+          {{ saving() ? 'Saving…' : 'Save & test connection' }}
+        </button>
+      </footer>
+    </form>
+  }
+</main>

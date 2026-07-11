@@ -7,12 +7,14 @@ use portal_core::index::IndexStore;
 use portal_core::migration::engine::PlannedMigration;
 use portal_core::migration::ledger::Ledger;
 use portal_core::registry::AgentRegistry;
+use portal_core::settings::SettingsStore;
 
 pub struct AppState {
     pub env: HostEnv,
     pub registry: AgentRegistry,
     pub ledger: Ledger,
     pub index: IndexStore,
+    pub settings: SettingsStore,
     /// Detection results are cached: detect() shells out to `<cli> --version`
     /// which costs seconds for npm shims. Board refreshes repopulate this.
     installations: Mutex<HashMap<String, Installation>>,
@@ -30,7 +32,8 @@ impl AppState {
         Self {
             env: HostEnv::from_system(),
             registry: AgentRegistry::new(portal_adapters::builtin_adapters()),
-            ledger: Ledger::new(app_data_dir),
+            ledger: Ledger::new(app_data_dir.clone()),
+            settings: SettingsStore::new(&app_data_dir),
             index,
             installations: Mutex::new(HashMap::new()),
             plans: Mutex::new(HashMap::new()),

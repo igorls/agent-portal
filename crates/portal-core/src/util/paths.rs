@@ -91,10 +91,26 @@ pub fn atomic_write(final_path: &Path, content: &[u8]) -> std::io::Result<()> {
         f.write_all(content)?;
         f.sync_all()?;
     }
+    // Windows rename does not replace an existing destination. Move the old
+    // file aside first and restore it if promoting the temp file fails.
+    let backup = dir.join(format!(".{file_name}.portal-backup"));
+    let had_existing = final_path.exists();
+    if had_existing {
+        let _ = std::fs::remove_file(&backup);
+        std::fs::rename(final_path, &backup)?;
+    }
     match std::fs::rename(&tmp, final_path) {
-        Ok(()) => Ok(()),
+        Ok(()) => {
+            if had_existing {
+                let _ = std::fs::remove_file(&backup);
+            }
+            Ok(())
+        }
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);
+            if had_existing {
+                let _ = std::fs::rename(&backup, final_path);
+            }
             Err(e)
         }
     }

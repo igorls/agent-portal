@@ -11,6 +11,7 @@ use portal_core::migration::ollama::{self, OllamaStatus};
 use portal_core::migration::types::{
     CommandSpec, DryRunReport, MigrationKind, MigrationResult, UndoReport,
 };
+use portal_core::settings::AppSettings;
 
 use crate::state::AppState;
 
@@ -100,8 +101,39 @@ pub async fn get_session_preview(
 }
 
 #[tauri::command]
-pub async fn check_ollama() -> Result<OllamaStatus, PortalError> {
-    run_blocking(move || Ok(ollama::status(ollama::DEFAULT_BASE_URL))).await
+pub async fn get_settings(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<AppSettings, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || Ok(s.settings.load())).await
+}
+
+#[tauri::command]
+pub async fn save_settings(
+    state: tauri::State<'_, Arc<AppState>>,
+    settings: AppSettings,
+) -> Result<AppSettings, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        s.settings.save(&settings)?;
+        Ok(s.settings.load())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn check_ollama(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<OllamaStatus, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let cfg = s.settings.load();
+        let mut status = ollama::status(&cfg.ollama_host);
+        status.default_model = cfg.ollama_model.clone();
+        status.default_present = status.models.iter().any(|model| model == &cfg.ollama_model);
+        Ok(status)
+    })
+    .await
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -135,9 +167,11 @@ pub async fn plan_migration(
             .installation(&target_agent)
             .ok_or_else(|| PortalError::Other(format!("agent '{target_agent}' not detected")))?;
 
+        let settings = s.settings.load();
         let brief_cfg = BriefConfig {
             enhance: enhance.unwrap_or(false),
-            ..BriefConfig::default()
+            base_url: settings.ollama_host,
+            model: settings.ollama_model,
         };
 
         let planned = engine::plan(

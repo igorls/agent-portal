@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { TauriService } from './tauri.service';
 import type { AgentDescriptor } from './gen/AgentDescriptor';
+import type { AppSettings } from './gen/AppSettings';
 import type { BoardSnapshot } from './gen/BoardSnapshot';
 import type { CanonicalSession } from './gen/CanonicalSession';
 import type { CommandSpec } from './gen/CommandSpec';
@@ -51,6 +52,14 @@ export class PortalCommands {
 
   checkOllama(): Promise<OllamaStatus> {
     return this.tauri.invoke<OllamaStatus>('check_ollama');
+  }
+
+  getSettings(): Promise<AppSettings> {
+    return this.tauri.invoke<AppSettings>('get_settings');
+  }
+
+  saveSettings(settings: AppSettings): Promise<AppSettings> {
+    return this.tauri.invoke<AppSettings>('save_settings', { settings });
   }
 
   planMigration(
