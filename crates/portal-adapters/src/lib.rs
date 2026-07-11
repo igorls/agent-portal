@@ -4,6 +4,7 @@
 
 pub mod claude_code;
 pub mod codex;
+pub mod opencode;
 
 use std::sync::Arc;
 
@@ -13,6 +14,7 @@ pub fn builtin_adapters() -> Vec<Arc<dyn AgentAdapter>> {
     vec![
         Arc::new(claude_code::ClaudeCodeAdapter),
         Arc::new(codex::CodexAdapter),
+        Arc::new(opencode::OpenCodeAdapter),
     ]
 }
 

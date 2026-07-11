@@ -11,6 +11,7 @@ import type { SessionSummary } from '../../core/ipc/gen/SessionSummary';
 const LANE_ACCENTS: Record<string, string> = {
   'claude-code': '#e8956a',
   codex: '#5bbfa2',
+  opencode: '#b98ae0',
 };
 
 const COLLAPSED_CARD_LIMIT = 5;

@@ -6,6 +6,7 @@ import type { LedgerEntry } from '../../core/ipc/gen/LedgerEntry';
 const AGENT_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex CLI',
+  opencode: 'OpenCode',
 };
 
 @Component({

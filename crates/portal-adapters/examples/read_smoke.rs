@@ -9,7 +9,13 @@ fn main() {
     let env = HostEnv::from_system();
     let registry = AgentRegistry::new(portal_adapters::builtin_adapters());
 
+    let only = std::env::args().nth(1);
     for adapter in registry.adapters() {
+        if let Some(only) = &only {
+            if adapter.id() != only {
+                continue;
+            }
+        }
         let Some(inst) = adapter.detect(&env) else {
             continue;
         };
