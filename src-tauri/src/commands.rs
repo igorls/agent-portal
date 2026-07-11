@@ -15,6 +15,11 @@ use portal_core::migration::types::{
 use crate::state::AppState;
 
 #[tauri::command]
+pub fn show_main_window(app: tauri::AppHandle) {
+    crate::tray::show_main(&app);
+}
+
+#[tauri::command]
 pub fn health(app: tauri::AppHandle) -> Result<Health, PortalError> {
     Ok(Health {
         app_version: app.package_info().version.to_string(),

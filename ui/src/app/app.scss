@@ -1,6 +1,8 @@
 :host {
   display: block;
   height: 100vh;
+  /* rounded window on Windows 11 undecorated windows */
+  overflow: hidden;
 }
 
 .shell {
@@ -12,34 +14,18 @@
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 52px;
-  padding: 0 20px;
+  height: 46px;
+  padding: 0 0 0 16px;
   border-bottom: 1px solid var(--line);
-  background: linear-gradient(180deg, rgb(255 255 255 / 2%), transparent);
+  background: linear-gradient(180deg, rgb(255 255 255 / 3%), transparent);
   flex: 0 0 auto;
+  user-select: none;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-}
-
-.mark {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-sm);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.wordmark {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.1;
+  gap: 10px;
 
   .name {
     font-weight: 600;
@@ -47,20 +33,22 @@
     letter-spacing: -0.01em;
     color: var(--text-hi);
   }
+}
 
-  .tag {
-    font-size: 0.66rem;
-    letter-spacing: 0.06em;
-    color: var(--text-lo);
-    text-transform: uppercase;
-  }
+.mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .nav {
   display: flex;
   gap: 4px;
   margin-left: 22px;
-  margin-right: auto;
 
   a {
     padding: 5px 12px;
@@ -83,12 +71,19 @@
   }
 }
 
+/* fills the middle so the whole bar is a drag handle */
+.drag-spacer {
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+
 .status {
   display: flex;
   align-items: center;
   gap: 7px;
   font-size: 0.76rem;
   color: var(--text-mid);
+  padding-right: 12px;
 
   .sep {
     color: var(--text-lo);
@@ -109,5 +104,34 @@
     &.pending {
       background: var(--text-lo);
     }
+  }
+}
+
+/* ── window controls ─────────────────────────────────────────────────── */
+.win-controls {
+  display: flex;
+  align-self: stretch;
+  margin-left: 4px;
+}
+
+.win-btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 100%;
+  background: none;
+  border: none;
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+
+  &:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-hi);
+  }
+
+  &.close:hover {
+    background: #e5484d;
+    color: #fff;
   }
 }

@@ -1,0 +1,46 @@
+<div class="peek">
+  <header class="peek-head" data-tauri-drag-region>
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none">
+        <rect x="1.5" y="1.5" width="21" height="21" rx="6" stroke="currentColor" stroke-width="1.5" />
+        <path d="M7 9.5h7m0 0-2.4-2.4M14 9.5l-2.4 2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M17 14.5h-7m0 0 2.4-2.4M10 14.5l2.4 2.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
+    </span>
+    <span class="title">Agent Portal</span>
+    <span class="agents mono">{{ agentCount() }} agents</span>
+    <button class="close" (click)="tauri.closePeek()" title="Close" aria-label="Close">✕</button>
+  </header>
+
+  <div class="peek-body">
+    @if (live().length > 0) {
+      <div class="section-label"><span class="live-dot"></span> Live now</div>
+      @for (row of live(); track row.session.nativeId) {
+        <div class="row live">
+          <span class="dot" [style.background]="row.accent"></span>
+          <div class="text">
+            <div class="row-title">{{ row.session.title ?? row.session.nativeId.slice(0, 8) }}</div>
+            <div class="row-meta mono">{{ row.project }} · {{ timeAgo(row.session.updatedAt) }}</div>
+          </div>
+        </div>
+      }
+    }
+
+    <div class="section-label">Recent</div>
+    @for (row of recent(); track row.session.nativeId) {
+      <div class="row">
+        <span class="dot" [style.background]="row.accent"></span>
+        <div class="text">
+          <div class="row-title">{{ row.session.title ?? row.session.nativeId.slice(0, 8) }}</div>
+          <div class="row-meta mono">{{ row.project }} · {{ timeAgo(row.session.updatedAt) }}</div>
+        </div>
+      </div>
+    } @empty {
+      <div class="peek-empty">No sessions cached yet — open the board once.</div>
+    }
+  </div>
+
+  <footer class="peek-foot">
+    <button class="open-board" (click)="openBoard()">Open board →</button>
+  </footer>
+</div>

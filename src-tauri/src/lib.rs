@@ -1,10 +1,11 @@
 mod commands;
 mod state;
+mod tray;
 
 use std::sync::Arc;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -15,6 +16,19 @@ pub fn run() {
                 .app_data_dir()
                 .unwrap_or_else(|_| std::env::temp_dir().join("agent-portal"));
             app.manage(Arc::new(AppState::new(data_dir)));
+            tray::init(app.handle())?;
+
+            // Closing the main window hides it to the tray instead of quitting;
+            // only the tray's Quit exits.
+            if let Some(main) = app.get_webview_window(tray::MAIN) {
+                let handle = main.clone();
+                main.on_window_event(move |event| {
+                    if let WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = handle.hide();
+                    }
+                });
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -29,7 +43,8 @@ pub fn run() {
             commands::undo_migration,
             commands::launch_session,
             commands::launch_command,
-            commands::list_activity
+            commands::list_activity,
+            commands::show_main_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running Agent Portal");
