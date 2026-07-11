@@ -79,61 +79,78 @@
           (cdkDropListDropped)="onDrop($event, lane)"
         >
           @for (project of lane.projects; track project.key) {
-            <div class="project">
-              <div class="project-header" [title]="project.cwdNormalized ?? project.key">
+            <div
+              class="project"
+              [class.open]="isProjectOpen(project)"
+              [class.linked]="isProjectLinked(project)"
+              [class.linked-open]="isProjectOpen(project) && isProjectLinked(project)"
+            >
+              <button
+                class="project-header"
+                (click)="toggleProject(project)"
+                [title]="project.cwdNormalized ?? project.key"
+              >
+                <span class="chevron" [class.down]="isProjectOpen(project)">▸</span>
                 <span class="project-label mono">{{ project.label }}</span>
+                @if (isProjectLinked(project)) {
+                  <span class="link-dot" title="the same project exists in another agent"></span>
+                }
                 <span class="project-count">{{ project.sessions.length }}</span>
-              </div>
+              </button>
 
-              @for (
-                s of isExpanded(lane.agent.id, project.key)
-                  ? project.sessions
-                  : project.sessions.slice(0, collapsedLimit);
-                track s.nativeId
-              ) {
-                <article
-                  class="card"
-                  cdkDrag
-                  [cdkDragData]="s"
-                  (cdkDragStarted)="onDragStarted(lane.agent.id)"
-                  (cdkDragEnded)="onDragEnded()"
-                  [class.live]="s.maybeLive"
-                  [class.loading]="previewLoading() === s.nativeId"
-                  [title]="s.storePath"
-                  (click)="openPreview(s)"
-                >
-                  <div class="card-drag-preview" *cdkDragPreview>
-                    <span class="chip-dot" [style.--agent]="accent(lane.agent.id)"></span>
-                    {{ s.title ?? s.nativeId.slice(0, 8) }}
-                  </div>
+              @if (isProjectOpen(project)) {
+                <div class="project-body">
+                  @for (
+                    s of isShownFull(lane.agent.id, project.key)
+                      ? project.sessions
+                      : project.sessions.slice(0, collapsedLimit);
+                    track s.nativeId
+                  ) {
+                    <article
+                      class="card"
+                      cdkDrag
+                      [cdkDragData]="s"
+                      (cdkDragStarted)="onDragStarted(lane.agent.id)"
+                      (cdkDragEnded)="onDragEnded()"
+                      [class.live]="s.maybeLive"
+                      [class.loading]="previewLoading() === s.nativeId"
+                      [title]="s.storePath"
+                      (click)="openPreview(s)"
+                    >
+                      <div class="card-drag-preview" *cdkDragPreview>
+                        <span class="chip-dot" [style.--agent]="accent(lane.agent.id)"></span>
+                        {{ s.title ?? s.nativeId.slice(0, 8) }}
+                      </div>
 
-                  <div class="card-top">
-                    @if (s.maybeLive) {
-                      <span class="live-dot" title="the agent may be writing to this session now"></span>
-                    }
-                    <span class="card-title">{{ s.title ?? s.nativeId.slice(0, 8) }}</span>
-                  </div>
-                  <div class="card-meta mono">
-                    <span>{{ timeAgo(s.updatedAt) }}</span>
-                    @if (s.messageCount !== null) {
-                      <span class="dim">·</span>
-                      <span>{{ s.messageCountExact ? '' : '~' }}{{ s.messageCount }} msg</span>
-                    }
-                    @if (s.model) {
-                      <span class="model-chip">{{ s.model }}</span>
-                    }
-                  </div>
-                </article>
-              }
+                      <div class="card-top">
+                        @if (s.maybeLive) {
+                          <span class="live-dot" title="the agent may be writing to this session now"></span>
+                        }
+                        <span class="card-title">{{ s.title ?? s.nativeId.slice(0, 8) }}</span>
+                      </div>
+                      <div class="card-meta mono">
+                        <span>{{ timeAgo(s.updatedAt) }}</span>
+                        @if (s.messageCount !== null) {
+                          <span class="dim">·</span>
+                          <span>{{ s.messageCountExact ? '' : '~' }}{{ s.messageCount }} msg</span>
+                        }
+                        @if (s.model) {
+                          <span class="model-chip">{{ s.model }}</span>
+                        }
+                      </div>
+                    </article>
+                  }
 
-              @if (project.sessions.length > collapsedLimit) {
-                <button class="show-more mono" (click)="toggleExpanded(lane.agent.id, project.key)">
-                  {{
-                    isExpanded(lane.agent.id, project.key)
-                      ? '– show fewer'
-                      : '+ ' + (project.sessions.length - collapsedLimit) + ' more'
-                  }}
-                </button>
+                  @if (project.sessions.length > collapsedLimit) {
+                    <button class="show-more mono" (click)="toggleShownFull(lane.agent.id, project.key)">
+                      {{
+                        isShownFull(lane.agent.id, project.key)
+                          ? '– show fewer'
+                          : '+ ' + (project.sessions.length - collapsedLimit) + ' more'
+                      }}
+                    </button>
+                  }
+                </div>
               }
             </div>
           } @empty {

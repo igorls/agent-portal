@@ -241,28 +241,68 @@
   text-align: center;
 }
 
-/* ── project groups ─────────────────────────────────────────────────── */
+/* ── project groups (collapsible, cross-lane linked) ────────────────── */
 .project {
-  margin-bottom: 16px;
+  margin-bottom: 3px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+
+  &.open {
+    margin-bottom: 10px;
+    background: rgb(255 255 255 / 1.5%);
+    border-color: var(--line);
+  }
+
+  /* the same folder, opened in any lane, lights up in every lane */
+  &.linked-open {
+    border-color: var(--accent-line);
+    box-shadow: 0 0 0 1px var(--accent-line), 0 8px 24px rgb(124 140 248 / 10%);
+  }
 }
 
 .project-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 3px 8px;
-  position: sticky;
-  top: 0;
-  background: linear-gradient(180deg, var(--bg-panel) 70%, transparent);
-  z-index: 1;
+  width: 100%;
+  padding: 7px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+
+  &:hover {
+    background: var(--bg-card);
+  }
+
+  .chevron {
+    color: var(--text-lo);
+    font-size: 0.7rem;
+    transition: transform 0.15s;
+    &.down {
+      transform: rotate(90deg);
+      color: var(--text-mid);
+    }
+  }
 
   .project-label {
-    font-size: 0.72rem;
+    font-size: 0.74rem;
     color: var(--text-mid);
     letter-spacing: 0.01em;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .link-dot {
+    flex: 0 0 auto;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
   }
 
   .project-count {
@@ -275,6 +315,15 @@
     padding: 1px 7px;
     flex: 0 0 auto;
   }
+}
+
+.linked-open .project-header .chevron.down,
+.linked-open .project-header .project-label {
+  color: var(--accent);
+}
+
+.project-body {
+  padding: 2px 8px 8px;
 }
 
 /* ── cards ───────────────────────────────────────────────────────────── */

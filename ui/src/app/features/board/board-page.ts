@@ -6,6 +6,7 @@ import { SessionPreview } from '../preview/session-preview';
 import { MigrationWizard, type MigrationRequest } from '../migration/migration-wizard';
 import type { CanonicalSession } from '../../core/ipc/gen/CanonicalSession';
 import type { Lane } from '../../core/ipc/gen/Lane';
+import type { ProjectGroup } from '../../core/ipc/gen/ProjectGroup';
 import type { SessionSummary } from '../../core/ipc/gen/SessionSummary';
 
 const LANE_ACCENTS: Record<string, string> = {
@@ -27,7 +28,11 @@ export class BoardPage {
   private readonly commands = inject(PortalCommands);
 
   protected readonly collapsedLimit = COLLAPSED_CARD_LIMIT;
-  protected readonly expanded = signal<ReadonlySet<string>>(new Set());
+
+  /** open project sections, keyed by shared project identity (normalized cwd) */
+  protected readonly openProjects = signal<ReadonlySet<string>>(new Set());
+  /** per-lane "show all cards" within an open section */
+  protected readonly shownFull = signal<ReadonlySet<string>>(new Set());
 
   protected readonly preview = signal<CanonicalSession | null>(null);
   protected readonly previewLoading = signal<string | null>(null);
@@ -36,10 +41,23 @@ export class BoardPage {
   protected readonly dragSource = signal<string | null>(null);
   protected readonly migration = signal<MigrationRequest | null>(null);
 
-  /** all lane drop-list ids, so every lane is a connected drop target */
   protected readonly dropListIds = computed(() =>
     (this.store.board()?.lanes ?? []).map((l) => this.dropListId(l.agent.id))
   );
+
+  /** project identities that appear in more than one agent lane */
+  protected readonly linkedProjectIds = computed<ReadonlySet<string>>(() => {
+    const counts = new Map<string, number>();
+    for (const lane of this.store.board()?.lanes ?? []) {
+      for (const project of lane.projects) {
+        const id = this.projectId(project);
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+    }
+    const linked = new Set<string>();
+    for (const [id, n] of counts) if (n > 1) linked.add(id);
+    return linked;
+  });
 
   constructor() {
     void this.store.load();
@@ -51,6 +69,39 @@ export class BoardPage {
 
   protected accent(agentId: string): string {
     return LANE_ACCENTS[agentId] ?? '#569cd6';
+  }
+
+  /** Shared identity across lanes: normalized cwd, falling back to the key. */
+  protected projectId(project: ProjectGroup): string {
+    return project.cwdNormalized ?? project.key;
+  }
+
+  protected isProjectOpen(project: ProjectGroup): boolean {
+    return this.openProjects().has(this.projectId(project));
+  }
+
+  protected isProjectLinked(project: ProjectGroup): boolean {
+    return this.linkedProjectIds().has(this.projectId(project));
+  }
+
+  /** Toggle a project open. Because state is keyed by shared identity, the
+      same folder opens (and highlights) across every agent lane at once. */
+  protected toggleProject(project: ProjectGroup): void {
+    const id = this.projectId(project);
+    const next = new Set(this.openProjects());
+    if (!next.delete(id)) next.add(id);
+    this.openProjects.set(next);
+  }
+
+  protected isShownFull(agentId: string, projectKey: string): boolean {
+    return this.shownFull().has(`${agentId}::${projectKey}`);
+  }
+
+  protected toggleShownFull(agentId: string, projectKey: string): void {
+    const key = `${agentId}::${projectKey}`;
+    const next = new Set(this.shownFull());
+    if (!next.delete(key)) next.add(key);
+    this.shownFull.set(next);
   }
 
   /** any migration (native or brief) possible from the dragged source into targetAgent? */
@@ -92,9 +143,7 @@ export class BoardPage {
 
   protected onMigrationClosed(performed: boolean): void {
     this.migration.set(null);
-    if (performed) {
-      void this.store.load();
-    }
+    if (performed) void this.store.refresh();
   }
 
   protected async openPreview(summary: SessionSummary): Promise<void> {
@@ -116,19 +165,6 @@ export class BoardPage {
 
   protected closePreview(): void {
     this.preview.set(null);
-  }
-
-  protected isExpanded(laneId: string, projectKey: string): boolean {
-    return this.expanded().has(`${laneId}::${projectKey}`);
-  }
-
-  protected toggleExpanded(laneId: string, projectKey: string): void {
-    const key = `${laneId}::${projectKey}`;
-    const next = new Set(this.expanded());
-    if (!next.delete(key)) {
-      next.add(key);
-    }
-    this.expanded.set(next);
   }
 
   protected timeAgo(iso: string | null): string {
