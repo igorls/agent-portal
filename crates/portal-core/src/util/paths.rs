@@ -115,6 +115,40 @@ pub fn normalize_cwd(cwd: &str) -> String {
     s
 }
 
+/// Convert a `file:///` URI to a native Windows path. Handles both a literal
+/// drive colon (`file:///p:/ecce/x`) and a percent-encoded one
+/// (`file:///p%3A/afterpic`), and uppercases the drive letter (`P:\afterpic`).
+/// Returns None if it isn't a `file:///` URI. Antigravity and Copilot both
+/// record workspaces as such URIs.
+pub fn file_uri_to_path(uri: &str) -> Option<String> {
+    let rest = uri.strip_prefix("file:///")?;
+    let mut s = percent_decode(rest).replace('/', "\\");
+    let bytes = s.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
+        let upper = bytes[0].to_ascii_uppercase() as char;
+        s.replace_range(0..1, &upper.to_string());
+    }
+    Some(s)
+}
+
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(b as char);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
 /// Human label for a workspace: its final path segment.
 pub fn label_from_cwd(cwd: &str) -> String {
     let normalized = normalize_cwd(cwd);
@@ -150,5 +184,20 @@ mod tests {
     fn labels_are_final_segment() {
         assert_eq!(label_from_cwd(r"P:\agent-portal"), "agent-portal");
         assert_eq!(label_from_cwd("/home/igorls/dev/meshguard"), "meshguard");
+    }
+
+    #[test]
+    fn file_uris_map_to_windows_paths() {
+        // percent-encoded colon (Copilot's workspace.json)
+        assert_eq!(
+            file_uri_to_path("file:///p%3A/afterpic").as_deref(),
+            Some(r"P:\afterpic")
+        );
+        // literal colon (Antigravity's summary uris)
+        assert_eq!(
+            file_uri_to_path("file:///p:/ecce/gespatri").as_deref(),
+            Some(r"P:\ecce\gespatri")
+        );
+        assert_eq!(file_uri_to_path("p:/afterpic"), None);
     }
 }

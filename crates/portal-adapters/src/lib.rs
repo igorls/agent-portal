@@ -5,6 +5,7 @@
 pub mod antigravity;
 pub mod claude_code;
 pub mod codex;
+pub mod copilot;
 pub mod opencode;
 
 use std::sync::Arc;
@@ -17,6 +18,7 @@ pub fn builtin_adapters() -> Vec<Arc<dyn AgentAdapter>> {
         Arc::new(codex::CodexAdapter),
         Arc::new(opencode::OpenCodeAdapter),
         Arc::new(antigravity::AntigravityAdapter),
+        Arc::new(copilot::CopilotAdapter),
     ]
 }
 

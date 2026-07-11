@@ -8,6 +8,7 @@ const AGENT_LABELS: Record<string, string> = {
   codex: 'Codex CLI',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',
+  copilot: 'GitHub Copilot',
 };
 
 @Component({

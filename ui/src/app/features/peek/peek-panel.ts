@@ -9,6 +9,7 @@ const AGENT_ACCENTS: Record<string, string> = {
   codex: '#5bbfa2',
   opencode: '#b98ae0',
   antigravity: '#48c6d9',
+  copilot: '#e88fa8',
 };
 
 interface PeekRow {

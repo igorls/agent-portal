@@ -10,6 +10,8 @@ use std::path::Path;
 
 use rusqlite::{Connection, OpenFlags};
 
+use portal_core::util::paths::file_uri_to_path;
+
 use super::proto::Msg;
 
 #[derive(Debug, Clone, Default)]
@@ -24,38 +26,6 @@ pub struct Summary {
 }
 
 pub type Index = HashMap<String, Summary>;
-
-/// Convert `file:///p:/ecce/gespatri` (or percent-encoded) to `P:\ecce\gespatri`.
-pub fn uri_to_path(uri: &str) -> Option<String> {
-    let rest = uri.strip_prefix("file:///")?;
-    let decoded = percent_decode(rest);
-    // p:/ecce/gespatri -> P:\ecce\gespatri; uppercase the drive letter
-    let mut s = decoded.replace('/', "\\");
-    let bytes = s.as_bytes();
-    if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
-        let upper = bytes[0].to_ascii_uppercase() as char;
-        s.replace_range(0..1, &upper.to_string());
-    }
-    Some(s)
-}
-
-fn percent_decode(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(b as char);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i] as char);
-        i += 1;
-    }
-    out
-}
 
 fn is_uuid(s: &str) -> bool {
     s.len() == 36 && s.as_bytes()[8] == b'-' && s.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
@@ -95,7 +65,7 @@ fn parse_ide_pb(path: &Path, index: &mut Index) {
         let workspace = strings
             .iter()
             .find(|s| s.starts_with("file:///"))
-            .and_then(|u| uri_to_path(u));
+            .and_then(|u| file_uri_to_path(u));
         // title: first plain string that isn't a uuid, uri, url, or a lone keyword
         let title = strings
             .iter()
@@ -152,7 +122,7 @@ fn parse_cli_db(path: &Path, index: &mut Index) {
         let workspace = ws
             .as_deref()
             .and_then(first_workspace_uri)
-            .and_then(|u| uri_to_path(&u));
+            .and_then(|u| file_uri_to_path(&u));
         index.insert(
             id,
             Summary {
