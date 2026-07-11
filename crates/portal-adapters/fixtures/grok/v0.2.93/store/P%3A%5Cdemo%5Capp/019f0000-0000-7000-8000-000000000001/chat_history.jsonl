@@ -1,0 +1,7 @@
+{"type":"system","content":"You are a coding agent."}
+{"type":"user","content":[{"type":"text","text":"Add a Grok adapter."}]}
+{"type":"reasoning","id":"r1","summary":[{"type":"summary_text","text":"Inspect the adapter interface."}],"encrypted_content":"opaque","status":"completed"}
+{"type":"assistant","content":"I will inspect it.","tool_calls":[{"id":"call-1","name":"read_file","arguments":"{\"path\":\"src/lib.rs\"}"}],"model_id":"grok-4.5","model_fingerprint":"fp","reasoning_effort":"high"}
+{"type":"tool_result","tool_call_id":"call-1","content":"file contents"}
+{"type":"backend_tool_call","kind":{"tool_type":"web_search","action":"search","id":"backend-1","status":"completed"}}
+{"type":"assistant","content":"The adapter is ready.","tool_calls":[],"model_id":"grok-4.5","model_fingerprint":"fp","reasoning_effort":"high"}

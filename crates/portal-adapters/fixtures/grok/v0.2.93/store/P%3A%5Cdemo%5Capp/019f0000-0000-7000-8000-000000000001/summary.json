@@ -1,0 +1,16 @@
+{
+  "info": { "cwd": "P:\\demo\\app", "id": "019f0000-0000-7000-8000-000000000001" },
+  "session_summary": "Implemented fixture support",
+  "created_at": "2026-07-10T08:48:33.012850200Z",
+  "updated_at": "2026-07-10T09:28:54.564303900Z",
+  "num_messages": 7,
+  "num_chat_messages": 7,
+  "current_model_id": "grok-4.5",
+  "chat_format_version": 1,
+  "git_root_dir": "P:\\demo\\app",
+  "head_branch": "feature/grok",
+  "last_active_at": "2026-07-10T09:28:54.564303900Z",
+  "generated_title": "Implement Grok adapter",
+  "agent_name": "Grok",
+  "reasoning_effort": "high"
+}
