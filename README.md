@@ -63,7 +63,8 @@ On macOS or Linux you can grab and install the latest build in one line:
 curl -fsSL https://raw.githubusercontent.com/igorls/agent-portal/main/scripts/install.sh | bash
 ```
 
-Builds are currently unsigned, so the first launch may need a Gatekeeper /
+Official macOS releases are signed with Developer ID and notarized by Apple.
+Windows builds are currently unsigned, so the first launch may need a
 SmartScreen override.
 
 ## Prerequisites
@@ -93,6 +94,9 @@ cargo test --workspace
 pnpm --dir ui build
 node scripts/check-command-parity.mjs   # Rust command list ↔ Angular wrappers
 ```
+
+Maintainers: see [macOS signing and notarization](docs/macos-signing.md) for
+the local and GitHub Actions setup.
 
 ## License
 

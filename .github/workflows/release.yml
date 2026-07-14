@@ -69,10 +69,51 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm --dir ui install --frozen-lockfile
 
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          certificate_path="$RUNNER_TEMP/developer-id-application.p12"
+          keychain_path="$RUNNER_TEMP/agent-portal-signing.keychain-db"
+
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$keychain_path"
+          security list-keychain -d user -s "$keychain_path"
+
+          signing_identity="$(
+            security find-identity -v -p codesigning "$keychain_path" \
+              | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' \
+              | head -n 1
+          )"
+          if [ -z "$signing_identity" ]; then
+            echo "Developer ID Application identity not found in imported certificate" >&2
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
       - name: Build and release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
         with:
           # Only a v* tag push creates/publishes a release. A workflow_dispatch
           # run leaves these empty, so tauri-action just builds the installers as

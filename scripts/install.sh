@@ -71,8 +71,6 @@ if [ "$kind" = dmg ]; then
   rm -rf "${dest:?}/$(basename "$app")"
   cp -R "$app" "$dest/"
   hdiutil detach "$mount" >/dev/null 2>&1 || true
-  # Clear the quarantine flag so the unsigned app opens without a Gatekeeper block.
-  xattr -dr com.apple.quarantine "$dest/$(basename "$app")" 2>/dev/null || true
   say "Done. Open 'Agent Portal' from $dest."
 else
   dest="$HOME/.local/bin"; mkdir -p "$dest"
