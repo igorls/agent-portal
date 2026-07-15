@@ -55,6 +55,10 @@ export class PortalCommands {
     return this.tauri.invoke<OllamaStatus>('check_ollama');
   }
 
+  pullOllamaModel(model: string): Promise<OllamaStatus> {
+    return this.tauri.invoke<OllamaStatus>('pull_ollama_model', { model });
+  }
+
   getSettings(): Promise<AppSettings> {
     return this.tauri.invoke<AppSettings>('get_settings');
   }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "title": "Agent Portal",
+        "width": 1120,
+        "height": 720,
+        "minWidth": 960,
+        "minHeight": 600,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 15,
+          "y": 16
+        },
+        "shadow": true
+      }
+    ]
+  }
+}

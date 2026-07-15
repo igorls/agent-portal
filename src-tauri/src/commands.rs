@@ -140,6 +140,30 @@ pub async fn check_ollama(
     .await
 }
 
+#[tauri::command]
+pub async fn pull_ollama_model(
+    state: tauri::State<'_, Arc<AppState>>,
+    model: String,
+) -> Result<OllamaStatus, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let cfg = s.settings.load();
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(PortalError::Other("Model name is required".into()));
+        }
+        ollama::pull(&cfg.ollama_host, model).map_err(PortalError::Other)?;
+        let mut status = ollama::status(&cfg.ollama_host);
+        status.default_model = cfg.ollama_model.clone();
+        status.default_present = status
+            .models
+            .iter()
+            .any(|candidate| candidate == &cfg.ollama_model);
+        Ok(status)
+    })
+    .await
+}
+
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn plan_migration(
@@ -286,7 +310,8 @@ pub async fn naming_status(
     run_blocking(move || {
         let settings = s.settings.load();
         let status = ollama::status(&settings.ollama_host);
-        let model_present = status.models.iter().any(|m| m == &settings.ollama_model);
+        let naming_model = settings.ollama_naming_model;
+        let model_present = status.models.iter().any(|m| m == &naming_model);
 
         // The cached board is what the worker overlays titles onto; fall back to
         // a fresh scan only on a cold cache.
@@ -356,7 +381,7 @@ pub async fn naming_status(
 
         Ok(NamingReport {
             ollama_available: status.available,
-            model: settings.ollama_model,
+            model: naming_model,
             model_present,
             window_hours: crate::naming::RECENT_WINDOW_HOURS as u32,
             recent,

@@ -2,7 +2,7 @@
   <app-peek-panel />
 } @else {
   <div class="shell">
-    <header class="topbar" data-tauri-drag-region>
+    <header class="topbar" [class.macos]="isMac" data-tauri-drag-region>
       <div class="brand" data-tauri-drag-region>
         <span class="mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
@@ -37,24 +37,26 @@
         }
       </div>
 
-      <div class="win-controls">
-        <button class="win-btn" title="Hide to tray" (click)="tauri.hideToTray()" aria-label="Minimize to tray">
-          <svg viewBox="0 0 10 10" width="10" height="10"><path d="M1 5h8" stroke="currentColor" stroke-width="1" stroke-linecap="round" /></svg>
-        </button>
-        <button class="win-btn" [title]="tauri.maximized() ? 'Restore' : 'Maximize'" (click)="tauri.toggleMaximizeWindow()" aria-label="Maximize">
-          @if (tauri.maximized()) {
-            <svg viewBox="0 0 10 10" width="10" height="10">
-              <rect x="1.5" y="2.5" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1" />
-              <path d="M3.5 2.5V1.5h5v5H7.5" fill="none" stroke="currentColor" stroke-width="1" />
-            </svg>
-          } @else {
-            <svg viewBox="0 0 10 10" width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" /></svg>
-          }
-        </button>
-        <button class="win-btn close" title="Close to tray" (click)="tauri.hideToTray()" aria-label="Close">
-          <svg viewBox="0 0 10 10" width="10" height="10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1" stroke-linecap="round" /></svg>
-        </button>
-      </div>
+      @if (!isMac) {
+        <div class="win-controls">
+          <button class="win-btn" title="Hide to tray" (click)="tauri.hideToTray()" aria-label="Minimize to tray">
+            <svg viewBox="0 0 10 10" width="10" height="10"><path d="M1 5h8" stroke="currentColor" stroke-width="1" stroke-linecap="round" /></svg>
+          </button>
+          <button class="win-btn" [title]="tauri.maximized() ? 'Restore' : 'Maximize'" (click)="tauri.toggleMaximizeWindow()" aria-label="Maximize">
+            @if (tauri.maximized()) {
+              <svg viewBox="0 0 10 10" width="10" height="10">
+                <rect x="1.5" y="2.5" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1" />
+                <path d="M3.5 2.5V1.5h5v5H7.5" fill="none" stroke="currentColor" stroke-width="1" />
+              </svg>
+            } @else {
+              <svg viewBox="0 0 10 10" width="10" height="10"><rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" /></svg>
+            }
+          </button>
+          <button class="win-btn close" title="Close to tray" (click)="tauri.hideToTray()" aria-label="Close">
+            <svg viewBox="0 0 10 10" width="10" height="10"><path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1" stroke-linecap="round" /></svg>
+          </button>
+        </div>
+      }
     </header>
 
     <router-outlet />

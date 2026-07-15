@@ -65,7 +65,11 @@ fn emit_progress(
 fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
     let settings = state.settings.load();
     let status = ollama::status(&settings.ollama_host);
-    if !status.models.iter().any(|m| m == &settings.ollama_model) {
+    if !status
+        .models
+        .iter()
+        .any(|m| m == &settings.ollama_naming_model)
+    {
         // No model → nothing to run; leave the worker marked idle.
         emit_progress(state, app, |p| {
             p.active = false;
@@ -138,7 +142,11 @@ fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
                 )
                 .ok()?;
             let activity = recent_activity(&session);
-            let title = ollama::title(&settings.ollama_host, &settings.ollama_model, &activity)?;
+            let title = ollama::title(
+                &settings.ollama_host,
+                &settings.ollama_naming_model,
+                &activity,
+            )?;
             state
                 .index
                 .upsert_generated_title(

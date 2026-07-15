@@ -14,13 +14,20 @@ use crate::util::paths::atomic_write;
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub ollama_host: String,
+    #[serde(default = "default_naming_model")]
+    pub ollama_naming_model: String,
     pub ollama_model: String,
+}
+
+fn default_naming_model() -> String {
+    ollama::DEFAULT_NAMING_MODEL.into()
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             ollama_host: ollama::DEFAULT_BASE_URL.into(),
+            ollama_naming_model: default_naming_model(),
             ollama_model: ollama::DEFAULT_MODEL.into(),
         }
     }
@@ -34,7 +41,12 @@ impl AppSettings {
             ));
         }
         if self.ollama_model.trim().is_empty() {
-            return Err(PortalError::Other("Ollama model is required".into()));
+            return Err(PortalError::Other(
+                "Ollama handoff model is required".into(),
+            ));
+        }
+        if self.ollama_naming_model.trim().is_empty() {
+            return Err(PortalError::Other("Ollama naming model is required".into()));
         }
         Ok(())
     }
@@ -54,7 +66,17 @@ impl SettingsStore {
     pub fn load(&self) -> AppSettings {
         std::fs::read_to_string(&self.path)
             .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
+            .and_then(|json| {
+                let has_naming_model = serde_json::from_str::<serde_json::Value>(&json)
+                    .ok()
+                    .and_then(|value| value.get("ollamaNamingModel").cloned())
+                    .is_some();
+                let mut settings = serde_json::from_str::<AppSettings>(&json).ok()?;
+                if !has_naming_model {
+                    settings.ollama_naming_model = settings.ollama_model.clone();
+                }
+                Some(settings)
+            })
             .unwrap_or_default()
     }
 
@@ -66,6 +88,7 @@ impl SettingsStore {
             .trim_end_matches('/')
             .to_string();
         settings.ollama_model = settings.ollama_model.trim().to_string();
+        settings.ollama_naming_model = settings.ollama_naming_model.trim().to_string();
         settings.validate()?;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -86,6 +109,7 @@ mod tests {
         let store = SettingsStore::new(&dir);
         let value = AppSettings {
             ollama_host: "http://model-box:11434".into(),
+            ollama_naming_model: "qwen3:0.6b".into(),
             ollama_model: "qwen3:8b".into(),
         };
         store.save(&value).unwrap();
@@ -103,6 +127,13 @@ mod tests {
                 ..value
             })
             .is_err());
+
+        std::fs::write(
+            &store.path,
+            r#"{"ollamaHost":"http://localhost:11434","ollamaModel":"legacy:7b"}"#,
+        )
+        .unwrap();
+        assert_eq!(store.load().ollama_naming_model, "legacy:7b");
         std::fs::remove_dir_all(dir).ok();
     }
 }

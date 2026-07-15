@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "Agent Portal",
-        "width": 1440,
-        "height": 920,
+        "width": 1120,
+        "height": 720,
         "minWidth": 960,
         "minHeight": 600,
         "decorations": false,

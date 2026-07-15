@@ -1,5 +1,5 @@
 <main class="settings-page">
-  <header>
+  <header class="page-header">
     <div>
       <h1>Settings</h1>
       <p>
@@ -12,46 +12,196 @@
   @if (loading()) {
     <div class="panel loading">Loading settings…</div>
   } @else {
-    <form class="panel" (submit)="save(); $event.preventDefault()">
-      <div class="section-title">Ollama</div>
-      <label>
-        <span>Host</span>
-        <input [formField]="settingsForm.ollamaHost" placeholder="http://localhost:11434" />
-        @if (settingsForm.ollamaHost().touched() && settingsForm.ollamaHost().errors().length) {
-          <small class="field-error">{{ settingsForm.ollamaHost().errors()[0].message }}</small>
-        }
-      </label>
-      <label>
-        <span>Model</span>
-        <input [formField]="settingsForm.ollamaModel" placeholder="gemma4:12b-it-qat" />
-        @if (settingsForm.ollamaModel().touched() && settingsForm.ollamaModel().errors().length) {
-          <small class="field-error">{{ settingsForm.ollamaModel().errors()[0].message }}</small>
-        }
-      </label>
-
-      @if (ollama(); as status) {
-        <div class="probe" [class.ok]="status.available" [class.bad]="!status.available">
-          <span class="dot"></span>
-          @if (status.available) {
-            Ollama reachable · {{ status.models.length }} model{{
-              status.models.length === 1 ? '' : 's'
-            }}
-            found
-          } @else {
-            Ollama is not reachable at this host
+    <form (submit)="save(); $event.preventDefault()">
+      <section class="panel connection-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">Ollama connection</div>
+            <p>Models and prompts stay on this machine.</p>
+          </div>
+          @if (ollama(); as status) {
+            <div class="probe" [class.ok]="status.available" [class.bad]="!status.available">
+              <span class="dot"></span>
+              {{ status.available ? 'Connected' : 'Offline' }}
+            </div>
           }
         </div>
+        <div class="host-row">
+          <label>
+            <span>Host</span>
+            <input [formField]="settingsForm.ollamaHost" placeholder="http://localhost:11434" />
+            @if (settingsForm.ollamaHost().touched() && settingsForm.ollamaHost().errors().length) {
+              <small class="field-error">{{ settingsForm.ollamaHost().errors()[0].message }}</small>
+            }
+          </label>
+          <button
+            class="secondary refresh"
+            type="button"
+            [disabled]="refreshing()"
+            (click)="refresh()"
+          >
+            {{ refreshing() ? 'Checking…' : 'Refresh models' }}
+          </button>
+        </div>
+      </section>
+
+      @if (ollama(); as status) {
+        <section class="panel hardware-panel">
+          <div>
+            <div class="section-title">This machine</div>
+            <div class="hardware-summary">
+              <strong>{{ status.hardware.platform }} · {{ status.hardware.architecture }}</strong>
+              <span>{{ formatBytes(status.hardware.totalMemory) }} memory</span>
+              <span>{{ status.hardware.logicalCpus }} logical CPUs</span>
+            </div>
+          </div>
+          <p>Recommendations prioritize low latency for short 3–8 word session titles.</p>
+        </section>
+
+        <section class="panel picker-panel">
+          <div class="section-heading">
+            <div>
+              <div class="section-title">Naming model</div>
+              <h2>Choose an installed model</h2>
+            </div>
+            <span class="model-count">{{ status.models.length }} installed</span>
+          </div>
+
+          @if (status.modelDetails.length) {
+            <div class="model-grid">
+              @for (installed of status.modelDetails; track installed.name) {
+                <button
+                  type="button"
+                  class="model-option"
+                  [class.selected]="model().ollamaNamingModel === installed.name"
+                  (click)="selectModel(installed.name)"
+                >
+                  <span class="radio"></span>
+                  <span class="model-copy">
+                    <strong class="mono">{{ installed.name }}</strong>
+                    <small>
+                      {{ installed.parameterSize || 'Local model' }}
+                      @if (installed.quantizationLevel) {
+                        · {{ installed.quantizationLevel }}
+                      }
+                      · {{ formatBytes(installed.size) }}
+                    </small>
+                  </span>
+                  @if (model().ollamaNamingModel === installed.name) {
+                    <span class="active-tag">Active</span>
+                  }
+                </button>
+              }
+            </div>
+          } @else {
+            <div class="empty-models">
+              <strong>No local models found</strong>
+              <span>Pull one of the fast recommendations below to get started.</span>
+            </div>
+          }
+
+          <label class="custom-model">
+            <span>Or enter any Ollama model name</span>
+            <input [formField]="settingsForm.ollamaNamingModel" placeholder="qwen3.5:0.8b" />
+            @if (
+              settingsForm.ollamaNamingModel().touched() &&
+              settingsForm.ollamaNamingModel().errors().length
+            ) {
+              <small class="field-error">{{
+                settingsForm.ollamaNamingModel().errors()[0].message
+              }}</small>
+            }
+          </label>
+        </section>
+
+        <section class="panel recommendations-panel">
+          <div class="section-heading">
+            <div>
+              <div class="section-title">Fast recommendations</div>
+              <h2>Optimized for session naming</h2>
+            </div>
+          </div>
+          <div class="recommendation-list">
+            @for (choice of status.recommendations; track choice.name) {
+              <article class="recommendation" [class.primary]="choice.recommended">
+                <div class="recommendation-main">
+                  <div class="recommendation-title">
+                    <strong class="mono">{{ choice.name }}</strong>
+                    @if (choice.recommended) {
+                      <span class="recommended-tag">Recommended</span>
+                    }
+                    <span class="fit" [class]="'fit ' + choice.fit">{{ choice.fit }} fit</span>
+                  </div>
+                  <p>{{ choice.description }}</p>
+                  <small
+                    >{{ choice.label }} · {{ formatBytes(choice.downloadSize) }} download · ~{{
+                      formatBytes(choice.estimatedMemory)
+                    }}
+                    memory</small
+                  >
+                </div>
+                @if (choice.installed) {
+                  <button type="button" class="secondary" (click)="selectModel(choice.name)">
+                    {{ model().ollamaNamingModel === choice.name ? 'Selected' : 'Use model' }}
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    class="pull"
+                    [disabled]="pulling() !== null || !status.available"
+                    (click)="pull(choice)"
+                  >
+                    {{ pulling() === choice.name ? 'Pulling…' : 'Pull model' }}
+                  </button>
+                }
+              </article>
+            }
+          </div>
+        </section>
+
+        <section class="panel handoff-panel">
+          <div class="section-heading">
+            <div>
+              <div class="section-title">Handoff & compaction model</div>
+              <h2>Choose quality over raw speed</h2>
+            </div>
+          </div>
+          <p class="section-copy">
+            This model rewrites migration handoffs and compacted session history. A larger model is
+            useful here because these jobs run only when requested.
+          </p>
+          <label>
+            <span>Handoff model</span>
+            <input
+              [formField]="settingsForm.ollamaModel"
+              list="installed-ollama-models"
+              placeholder="gemma4:12b"
+            />
+            <datalist id="installed-ollama-models">
+              @for (installed of status.modelDetails; track installed.name) {
+                <option [value]="installed.name"></option>
+              }
+            </datalist>
+            @if (
+              settingsForm.ollamaModel().touched() && settingsForm.ollamaModel().errors().length
+            ) {
+              <small class="field-error">{{
+                settingsForm.ollamaModel().errors()[0].message
+              }}</small>
+            }
+          </label>
+        </section>
       }
       @if (error(); as message) {
         <div class="error">{{ message }}</div>
       }
 
-      <footer>
+      <footer class="save-bar">
         @if (saved()) {
           <span class="saved">Saved and connection checked</span>
         }
         <button type="submit" [disabled]="settingsForm().invalid() || saving()">
-          {{ saving() ? 'Saving…' : 'Save & test connection' }}
+          {{ saving() ? 'Saving…' : 'Save naming model' }}
         </button>
       </footer>
     </form>

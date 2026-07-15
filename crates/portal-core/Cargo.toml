@@ -18,3 +18,4 @@ ureq = { version = "2", features = ["json"] }
 # App-local index cache (board snapshot) so the board opens instantly. Only
 # ever writes to the app's own data dir, never an agent's store.
 rusqlite = { version = "0.32", features = ["bundled"] }
+sysinfo = "0.33"

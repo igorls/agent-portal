@@ -24,6 +24,18 @@ pub fn run() {
             // Closing the main window hides it to the tray instead of quitting;
             // only the tray's Quit exits.
             if let Some(main) = app.get_webview_window(tray::MAIN) {
+                // `tauri dev` runs a bare executable on macOS and does not
+                // consistently apply the platform override that creates the
+                // native title-bar controls. Reinforce it at runtime so the
+                // live development window matches the packaged app.
+                #[cfg(target_os = "macos")]
+                {
+                    main.set_decorations(true)?;
+                    main.set_title_bar_style(tauri::TitleBarStyle::Overlay)?;
+                    #[cfg(debug_assertions)]
+                    main.set_title("")?;
+                }
+
                 let handle = main.clone();
                 main.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
@@ -41,6 +53,7 @@ pub fn run() {
             commands::refresh_board,
             commands::get_session_preview,
             commands::check_ollama,
+            commands::pull_ollama_model,
             commands::get_settings,
             commands::save_settings,
             commands::plan_migration,

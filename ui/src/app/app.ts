@@ -17,6 +17,8 @@ export class App {
 
   /** the peek popup runs the same app in a window labelled "peek" */
   protected readonly isPeek = this.tauri.label === 'peek';
+  /** WKWebView identifies macOS as Macintosh on both Intel and Apple Silicon. */
+  protected readonly isMac = navigator.userAgent.includes('Macintosh');
 
   protected readonly health = signal<Health | null>(null);
   protected readonly ipcError = signal<string | null>(null);
