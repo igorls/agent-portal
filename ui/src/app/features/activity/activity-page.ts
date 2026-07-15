@@ -8,6 +8,7 @@ import type { NamingProgress } from '../../core/ipc/gen/NamingProgress';
 
 const AGENT_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
+  'claude-cowork': 'Claude Cowork',
   codex: 'Codex CLI',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',

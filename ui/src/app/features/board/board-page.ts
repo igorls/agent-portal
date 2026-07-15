@@ -9,6 +9,7 @@ import type { SessionSummary } from '../../core/ipc/gen/SessionSummary';
 
 const LANE_ACCENTS: Record<string, string> = {
   'claude-code': '#e8956a',
+  'claude-cowork': '#d97757',
   codex: '#5bbfa2',
   opencode: '#b98ae0',
   antigravity: '#48c6d9',

@@ -16,6 +16,7 @@ background session titling) — your sessions are never sent to any cloud servic
 | Agent | Read | Native write | Notes |
 | --- | :---: | :---: | --- |
 | Claude Code | ✓ | ✓ | JSONL transcripts |
+| Claude Cowork | ✓ | — | Local audit logs + experimental remote cache reader |
 | Codex CLI | ✓ | ✓ | JSONL per session |
 | OpenCode | ✓ | ✓ | |
 | Antigravity (Gemini) | ✓ | — | protobuf + SQLite summaries |

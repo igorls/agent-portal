@@ -4,6 +4,7 @@
 
 pub mod antigravity;
 pub mod claude_code;
+pub mod claude_cowork;
 pub mod codex;
 pub mod copilot;
 pub mod grok;
@@ -16,6 +17,7 @@ use portal_core::adapter::AgentAdapter;
 pub fn builtin_adapters() -> Vec<Arc<dyn AgentAdapter>> {
     vec![
         Arc::new(claude_code::ClaudeCodeAdapter),
+        Arc::new(claude_cowork::ClaudeCoworkAdapter),
         Arc::new(codex::CodexAdapter),
         Arc::new(opencode::OpenCodeAdapter),
         Arc::new(antigravity::AntigravityAdapter),

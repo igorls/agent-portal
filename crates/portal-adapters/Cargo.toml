@@ -11,6 +11,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+zstd = "0.13"
 # OpenCode stores sessions in a SQLite DB. Bundled feature ships SQLite itself
 # so there's no system libsqlite3 dependency on Windows.
 rusqlite = { version = "0.32", features = ["bundled"] }
