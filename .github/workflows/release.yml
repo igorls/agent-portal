@@ -124,3 +124,37 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      # Tauri notarizes and staples the .app before it creates the disk image.
+      # Submit the final DMG too so the downloaded installer has its own
+      # offline Gatekeeper ticket (the same validation as our local release).
+      - name: Notarize and staple macOS disk image
+        if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          dmg_path="$(find target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
+          if [ -z "$dmg_path" ]; then
+            echo "Universal macOS DMG was not produced" >&2
+            exit 1
+          fi
+
+          xcrun notarytool submit "$dmg_path" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+
+      # tauri-action uploads assets before subsequent steps run. Replace the
+      # tagged DMG with the separately notarized, stapled version above.
+      - name: Replace release DMG with notarized artifact
+        if: runner.os == 'macOS' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dmg_path="$(find target/universal-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
+          gh release upload "${{ github.ref_name }}" "$dmg_path" --clobber
