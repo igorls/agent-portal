@@ -14,6 +14,7 @@ const LANE_ACCENTS: Record<string, string> = {
   opencode: '#b98ae0',
   antigravity: '#48c6d9',
   copilot: '#e88fa8',
+  'grok-build': '#f0b429',
 };
 
 const COLLAPSED_CARD_LIMIT = 6;
@@ -154,8 +155,11 @@ export class BoardPage {
     () => this.projects().find((p) => p.id === this.activeId()) ?? null
   );
 
-  /** the detail's columns: every installed agent (empty ones are drop targets),
-      plus any agent that has sessions here, minus chip-hidden agents */
+  /**
+   * Full detail columns: agents that already have sessions on this project
+   * (plus offline agents that still show historical sessions). Chip-hidden
+   * agents are excluded. Empty installed agents live in `idleTargets` instead.
+   */
   protected readonly activeTracks = computed<AgentTrack[]>(() => {
     const id = this.activeId();
     if (id == null) return [];
@@ -163,17 +167,45 @@ export class BoardPage {
     const hidden = this.hiddenAgents();
     return (this.store.board()?.lanes ?? [])
       .filter((l) => !hidden.has(l.agent.id))
-      .filter((l) => !!l.agent.installation || (entry?.perAgent.get(l.agent.id)?.length ?? 0) > 0)
       .map((l) => ({
         agentId: l.agent.id,
         displayName: l.agent.displayName,
         installed: !!l.agent.installation,
         sessions: entry?.perAgent.get(l.agent.id) ?? [],
+      }))
+      .filter((t) => t.sessions.length > 0);
+  });
+
+  /**
+   * Installed agents with no sessions on the selected project. Rendered as
+   * compact drop zones in one shared column; a successful migration promotes
+   * them into a full column after refresh.
+   */
+  protected readonly idleTargets = computed<AgentTrack[]>(() => {
+    const id = this.activeId();
+    if (id == null) return [];
+    const entry = this.projectIndex().get(id);
+    const hidden = this.hiddenAgents();
+    return (this.store.board()?.lanes ?? [])
+      .filter((l) => !hidden.has(l.agent.id))
+      .filter((l) => !!l.agent.installation)
+      .filter((l) => (entry?.perAgent.get(l.agent.id)?.length ?? 0) === 0)
+      .map((l) => ({
+        agentId: l.agent.id,
+        displayName: l.agent.displayName,
+        installed: true,
+        sessions: [] as SessionSummary[],
       }));
   });
 
-  protected readonly dropListIds = computed(() =>
-    this.activeTracks().map((t) => this.dropListId(t.agentId))
+  protected readonly dropListIds = computed(() => [
+    ...this.activeTracks().map((t) => this.dropListId(t.agentId)),
+    ...this.idleTargets().map((t) => this.dropListId(t.agentId)),
+  ]);
+
+  /** True while dragging and at least one idle agent accepts the drop. */
+  protected readonly idleHasActiveDrop = computed(() =>
+    this.idleTargets().some((t) => this.canDropInto(t.agentId))
   );
 
   constructor() {

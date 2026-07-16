@@ -127,11 +127,11 @@
         </header>
 
         <div class="tracks" [class.dragging]="dragSource()">
+          <!-- Agents that already have sessions on this project (full columns). -->
           @for (track of activeTracks(); track track.agentId) {
             <section
               class="track"
               [style.--agent]="accent(track.agentId)"
-              [class.empty]="track.sessions.length === 0"
               [class.target-ok]="canDropInto(track.agentId)"
               [class.target-off]="dragSource() && dragSource() !== track.agentId && !canDropInto(track.agentId)"
               [class.is-source]="dragSource() === track.agentId"
@@ -192,10 +192,6 @@
                       }
                     </div>
                   </article>
-                } @empty {
-                  <div class="track-empty">
-                    {{ track.installed ? 'No sessions — drop one here to migrate' : 'Agent offline' }}
-                  </div>
                 }
 
                 @if (track.sessions.length > collapsedLimit) {
@@ -206,6 +202,43 @@
                         : '+ ' + (track.sessions.length - collapsedLimit) + ' more'
                     }}
                   </button>
+                }
+              </div>
+            </section>
+          }
+
+          <!-- Other installed agents: one shared column of compact drop zones. -->
+          @if (idleTargets().length > 0) {
+            <section
+              class="idle-rail"
+              [class.has-target]="idleHasActiveDrop()"
+            >
+              <header class="idle-rail-head">
+                <span class="idle-rail-title">Also installed</span>
+                <span class="idle-rail-sub mono">drop to migrate</span>
+              </header>
+              <div class="idle-rail-body">
+                @for (track of idleTargets(); track track.agentId) {
+                  <div
+                    class="idle-drop"
+                    [style.--agent]="accent(track.agentId)"
+                    [class.target-ok]="canDropInto(track.agentId)"
+                    [class.target-off]="dragSource() && !canDropInto(track.agentId)"
+                    cdkDropList
+                    [cdkDropListData]="track"
+                    [id]="dropListId(track.agentId)"
+                    [cdkDropListConnectedTo]="dropListIds()"
+                    [cdkDropListSortingDisabled]="true"
+                    (cdkDropListDropped)="onDropTrack($event, track)"
+                  >
+                    <span class="idle-dot"></span>
+                    <span class="idle-name">{{ track.displayName }}</span>
+                    @if (canDropInto(track.agentId)) {
+                      <span class="idle-hint">drop</span>
+                    } @else {
+                      <span class="idle-hint muted">no sessions</span>
+                    }
+                  </div>
                 }
               </div>
             </section>

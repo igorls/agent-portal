@@ -21,7 +21,7 @@ background session titling) — your sessions are never sent to any cloud servic
 | OpenCode | ✓ | ✓ | |
 | Antigravity (Gemini) | ✓ | — | protobuf + SQLite summaries |
 | GitHub Copilot | ✓ | — | VS Code chat sessions |
-| Grok | ✓ | — | |
+| Grok Build | ✓ | Claude Code only | Native via `grok import`; brief for other sources |
 
 Adding an agent is one module in `crates/portal-adapters` plus one line in its
 registry, then making the conformance suite pass.

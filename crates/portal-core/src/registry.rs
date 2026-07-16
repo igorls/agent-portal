@@ -88,7 +88,7 @@ impl AgentRegistry {
                 }
                 let target_caps = target.capabilities();
                 let native =
-                    can_read && *target_detected && target_caps.write_native == SupportLevel::Full;
+                    can_read && *target_detected && target.accepts_native_from(source.id());
                 let brief = can_read && *target_detected && target_caps.launch_new;
                 out.push(PairFeasibility {
                     source: source.id().to_string(),

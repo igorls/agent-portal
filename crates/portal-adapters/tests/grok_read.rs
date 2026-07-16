@@ -106,6 +106,34 @@ fn command_uses_native_resume() {
             "019f0000-0000-7000-8000-000000000001"
         ]
     );
+}
 
-    assert!(!adapter.capabilities().launch_new);
+#[test]
+fn brief_target_launches_interactive_session_with_prompt() {
+    let adapter = GrokAdapter;
+    assert!(adapter.capabilities().launch_new);
+    assert_eq!(
+        adapter.capabilities().write_native,
+        portal_core::dto::SupportLevel::Partial
+    );
+    assert!(adapter.accepts_native_from("claude-code"));
+    assert!(!adapter.accepts_native_from("codex"));
+
+    let launch = adapter
+        .new_session_command(
+            &installation(),
+            r"P:\demo\app",
+            "Read .agent-portal/handoff-abc.md — pick up where it leaves off.",
+        )
+        .expect("new session");
+    assert_eq!(launch.program, "grok");
+    assert_eq!(
+        launch.args,
+        [
+            "--cwd",
+            r"P:\demo\app",
+            "Read .agent-portal/handoff-abc.md — pick up where it leaves off.",
+        ]
+    );
+    assert_eq!(launch.cwd, r"P:\demo\app");
 }

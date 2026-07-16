@@ -9,7 +9,7 @@ use std::sync::Arc;
 use chrono::Utc;
 
 use crate::adapter::{AgentAdapter, SessionLocator};
-use crate::dto::Installation;
+use crate::dto::{Installation, SupportLevel};
 use crate::error::{PortalError, Result};
 use crate::ir::{tool_args_text, tool_output_text, Block, CanonicalSession};
 use crate::migration::ledger::{Ledger, LedgerEntry};
@@ -388,7 +388,24 @@ fn execute_native(
             store_path: Some(written.primary_path.clone().into()),
         },
     ) {
-        Ok(round_tripped) => verify::compare(&planned.session, &round_tripped),
+        Ok(round_tripped) => {
+            let full = verify::compare(&planned.session, &round_tripped);
+            // Origin-restricted importers (write_native = Partial) often remap
+            // tool names/shapes; accept text-stream equivalence rather than
+            // rolling back a successful native import.
+            if full.grade == VerifyGrade::Failed
+                && target_adapter.capabilities().write_native == SupportLevel::Partial
+            {
+                let soft = verify::compare_text_stream(&planned.session, &round_tripped);
+                if soft.grade != VerifyGrade::Failed {
+                    soft
+                } else {
+                    full
+                }
+            } else {
+                full
+            }
+        }
         Err(e) => crate::migration::types::VerifyReport {
             grade: VerifyGrade::Failed,
             compared_blocks: 0,

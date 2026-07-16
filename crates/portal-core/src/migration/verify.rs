@@ -105,3 +105,56 @@ pub fn compare(source: &CanonicalSession, written: &CanonicalSession) -> VerifyR
         diffs,
     }
 }
+
+/// Text-only stream compare for origin-restricted native imports (e.g. Grok's
+/// `grok import`) that legitimately remap tool names/argument shapes.
+/// Thinking, tools, and meta are ignored; only non-empty user/assistant text
+/// must match in order.
+pub fn compare_text_stream(source: &CanonicalSession, written: &CanonicalSession) -> VerifyReport {
+    let a = text_stream(source);
+    let b = text_stream(written);
+    let mut diffs = Vec::new();
+    if a.len() != b.len() {
+        diffs.push(format!(
+            "text block count differs: source {} vs written {}",
+            a.len(),
+            b.len()
+        ));
+    }
+    for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+        if x != y {
+            diffs.push(format!("text block {i} differs after migration"));
+            if diffs.len() >= 6 {
+                diffs.push("… further differences suppressed".to_string());
+                break;
+            }
+        }
+    }
+    VerifyReport {
+        grade: if diffs.is_empty() {
+            VerifyGrade::Equivalent
+        } else {
+            VerifyGrade::Failed
+        },
+        compared_blocks: a.len() as u32,
+        diffs,
+    }
+}
+
+fn text_stream(session: &CanonicalSession) -> Vec<(bool, u64)> {
+    let mut out = Vec::new();
+    for turn in &session.timeline {
+        if turn.is_meta {
+            continue;
+        }
+        let is_assistant = turn.role == Role::Assistant;
+        for block in &turn.blocks {
+            if let Block::Text { text } = block {
+                if !text.trim().is_empty() {
+                    out.push((is_assistant, hash(text)));
+                }
+            }
+        }
+    }
+    out
+}

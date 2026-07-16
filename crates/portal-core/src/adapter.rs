@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::dto::{Capabilities, Installation, ProjectRef, SessionSummary};
+use crate::dto::{Capabilities, Installation, ProjectRef, SessionSummary, SupportLevel};
 use crate::error::{PortalError, Result};
 use crate::ir::CanonicalSession;
 use crate::migration::types::{CommandSpec, WriteOptions, WritePlan, WrittenSession};
@@ -57,6 +57,15 @@ pub trait AgentAdapter: Send + Sync {
     fn id(&self) -> &'static str;
     fn display_name(&self) -> &'static str;
     fn capabilities(&self) -> Capabilities;
+
+    /// Whether this agent can receive a **native** migration from `source_agent_id`.
+    ///
+    /// Default: any source when `write_native` is `Full`. Adapters with
+    /// origin-restricted native writers (e.g. Grok's `grok import` from Claude
+    /// Code only) override this and usually set `write_native` to `Partial`.
+    fn accepts_native_from(&self, _source_agent_id: &str) -> bool {
+        self.capabilities().write_native == SupportLevel::Full
+    }
 
     /// Detect installation: CLI on PATH and/or store dir present. Either
     /// alone counts (a store can outlive an uninstalled CLI).

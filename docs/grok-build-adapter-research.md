@@ -190,9 +190,32 @@ Sources: [Headless and Scripting](https://docs.x.ai/build/cli/headless-scripting
 
 The initial adapter intentionally exposes partial read plus native resume. It
 enumerates `chat_format_version = 1` stores, parses summaries and canonical
-chat records, and preserves unsupported records as metadata. It does not yet
-advertise incoming brief/native migration: ACP target creation must capture
-and persist the returned Grok session UUID, which the current launch-only
-Portal command seam cannot do. Event/file-snapshot enrichment, ACP creation,
-Claude import validation, and additional Grok-version fixtures remain follow-up
-work.
+chat records, and preserves unsupported records as metadata.
+
+### Brief-mode target (landed)
+
+Incoming migrations can target Grok Build via the portal handoff brief:
+
+- `launch_new = true`
+- `new_session_command` → `grok --cwd <workspace> "<handoff prompt>"`
+  (interactive TUI; not `-p/--single`, which exits after one turn)
+
+### Native import from Claude Code (landed)
+
+- `write_native = Partial` with `accepts_native_from("claude-code")` only
+- `write_session` shells out to `grok import --json <claude.jsonl>` with
+  `GROK_HOME` pointed at the parent of the configured sessions root
+- Feasibility matrix is source-aware: only **Claude Code → Grok** gets
+  `native: true`; other origins get brief only
+- Windows workaround: Grok's importer currently accepts only CWD values that
+  start with `/`. Portal rewrites `C:\…` → `/C:/…` for the import copy, then
+  re-homes the session directory under the real percent-encoded Windows path
+  and patches `summary.json` `info.cwd`
+- Read-back verify uses full content compare when possible; on Partial writers
+  falls back to text-stream `Equivalent` (tool names are remapped by import)
+
+### Still follow-up
+
+ACP target creation (must capture/persist the returned Grok session UUID),
+event/file-snapshot enrichment, additional Grok-version fixtures, and any
+upstream fix so Windows CWDs import without rewrite.

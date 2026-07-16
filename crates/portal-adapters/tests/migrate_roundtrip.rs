@@ -14,6 +14,7 @@ use portal_core::migration::types::{MigrationKind, VerifyGrade};
 
 use portal_adapters::claude_code::{claude_slug, ClaudeCodeAdapter};
 use portal_adapters::codex::CodexAdapter;
+use portal_adapters::grok::GrokAdapter;
 
 fn fixture(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -31,6 +32,9 @@ fn claude() -> Arc<dyn AgentAdapter> {
 }
 fn codex() -> Arc<dyn AgentAdapter> {
     Arc::new(CodexAdapter)
+}
+fn grok() -> Arc<dyn AgentAdapter> {
+    Arc::new(GrokAdapter)
 }
 
 fn install(store_root: PathBuf, version: &str) -> Installation {
@@ -365,6 +369,217 @@ fn brief_mode_writes_handoff_into_workspace_and_ledgers() {
     let undo = engine::undo(&entry, &ledger, false).unwrap();
     assert!(!doc.is_file(), "undo should remove the handoff doc");
     assert!(undo.skipped.is_empty());
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// Grok brief target remains available for all sources.
+#[test]
+fn brief_mode_to_grok_build_writes_handoff_and_launch_command() {
+    let tmp = temp_dir("brief-grok");
+    std::fs::remove_dir_all(&tmp).ok();
+    let workspace = tmp.join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let workspace_str = workspace.display().to_string();
+
+    let store = tmp.join("claude").join("projects");
+    let slug = claude_slug(&workspace_str);
+    let session_dir = store.join(&slug);
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let sid = "33333333-3333-3333-3333-333333333333";
+    let jsonl = format!(
+        "{u}\n{a}\n",
+        u = serde_json::json!({
+            "type": "user", "uuid": "u1", "parentUuid": null, "isMeta": false,
+            "timestamp": "2026-07-01T10:00:00.000Z", "cwd": workspace_str,
+            "sessionId": sid, "version": "2.1.206", "gitBranch": "main",
+            "message": { "role": "user", "content": "Implement Grok brief migration" }
+        }),
+        a = serde_json::json!({
+            "type": "assistant", "uuid": "a1", "parentUuid": "u1",
+            "timestamp": "2026-07-01T10:00:05.000Z", "cwd": workspace_str,
+            "sessionId": sid, "version": "2.1.206", "gitBranch": "main",
+            "message": { "role": "assistant", "model": "claude-fable-5",
+                "content": [{ "type": "text", "text": "Wire launch_new and new_session_command." }] }
+        }),
+    );
+    std::fs::write(session_dir.join(format!("{sid}.jsonl")), jsonl).unwrap();
+
+    let source = install(store, "2.1.206 (Claude Code)");
+    let target = install(tmp.join("grok").join("sessions"), "grok 0.2.93");
+
+    let planned = engine::plan(
+        &claude(),
+        &source,
+        &grok(),
+        &target,
+        &SessionLocator {
+            native_id: sid.to_string(),
+            store_path: None,
+        },
+        MigrationKind::Brief,
+        &BriefConfig::default(),
+    )
+    .expect("plan brief → grok");
+
+    assert_eq!(planned.report.kind, MigrationKind::Brief);
+    assert!(planned
+        .report
+        .brief_preview
+        .as_ref()
+        .is_some_and(|p| p.contains("Implement Grok brief migration")));
+    assert!(planned.report.resume_preview.contains("grok"));
+
+    let ledger = Ledger::new(tmp.join("appdata"));
+    let result = engine::execute(&planned, &grok(), &target, &ledger).expect("execute brief → grok");
+
+    assert_eq!(result.kind, MigrationKind::Brief);
+    assert_eq!(result.target_agent, "grok-build");
+    assert!(result.verify.is_none());
+
+    let doc = workspace.join(".agent-portal").join("handoff-33333333.md");
+    assert!(doc.is_file(), "handoff doc missing at {}", doc.display());
+    let body = std::fs::read_to_string(&doc).unwrap();
+    assert!(body.contains("Implement Grok brief migration"));
+
+    assert_eq!(result.resume_command.program, "grok");
+    assert_eq!(result.resume_command.args[0], "--cwd");
+    assert_eq!(result.resume_command.args[1], workspace_str);
+    assert!(
+        result.resume_command.args[2].contains(".agent-portal/handoff-33333333.md"),
+        "launch prompt should point at handoff: {:?}",
+        result.resume_command.args
+    );
+
+    std::fs::remove_dir_all(&tmp).ok();
+}
+
+/// Claude Code → Grok Build native import via `grok import`.
+/// Requires a `grok` CLI on PATH (skipped otherwise).
+#[test]
+fn claude_to_grok_native_import_via_cli() {
+    let grok_available = std::process::Command::new("grok")
+        .arg("version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    if !grok_available {
+        eprintln!("skipping claude_to_grok_native_import_via_cli: grok CLI not available");
+        return;
+    }
+
+    let tmp = temp_dir("c2g-native");
+    std::fs::remove_dir_all(&tmp).ok();
+    let workspace = tmp.join("workspace");
+    std::fs::create_dir_all(&workspace).unwrap();
+    let workspace_str = workspace.display().to_string();
+
+    // Claude store with a linear transcript (no abandoned forks) so text-stream
+    // verify matches what `grok import` materializes.
+    let store = tmp.join("claude").join("projects");
+    let slug = claude_slug(&workspace_str);
+    let session_dir = store.join(&slug);
+    std::fs::create_dir_all(&session_dir).unwrap();
+    let sid = "44444444-4444-4444-4444-444444444444";
+    let jsonl = format!(
+        "{u}\n{a}\n{t}\n{a2}\n",
+        u = serde_json::json!({
+            "type": "user", "uuid": "u1", "parentUuid": null, "isMeta": false,
+            "timestamp": "2026-07-01T10:00:00.000Z", "cwd": workspace_str,
+            "sessionId": sid, "version": "2.1.206", "gitBranch": "main",
+            "message": { "role": "user", "content": "Scaffold the Grok native importer" }
+        }),
+        a = serde_json::json!({
+            "type": "assistant", "uuid": "a1", "parentUuid": "u1",
+            "timestamp": "2026-07-01T10:00:05.000Z", "cwd": workspace_str,
+            "sessionId": sid, "version": "2.1.206", "gitBranch": "main",
+            "message": { "role": "assistant", "model": "claude-fable-5",
+                "content": [
+                    { "type": "text", "text": "Reading the adapter module." },
+                    { "type": "tool_use", "id": "toolu_01", "name": "Read",
+                      "input": { "file_path": format!("{workspace_str}/mod.rs") } }
+                ] }
+        }),
+        t = serde_json::json!({
+            "type": "user", "uuid": "u2", "parentUuid": "a1", "isMeta": false,
+            "timestamp": "2026-07-01T10:00:06.000Z", "cwd": workspace_str,
+            "sessionId": sid, "version": "2.1.206", "gitBranch": "main",
+            "message": { "role": "user", "content": [
+                { "type": "tool_result", "tool_use_id": "toolu_01",
+                  "content": "pub struct GrokAdapter;", "is_error": false }
+            ] }
+        }),
+        a2 = serde_json::json!({
+            "type": "assistant", "uuid": "a2", "parentUuid": "u2",
+            "timestamp": "2026-07-01T10:00:09.000Z", "cwd": workspace_str,
+            "sessionId": sid, "version": "2.1.206", "gitBranch": "main",
+            "message": { "role": "assistant", "model": "claude-fable-5",
+                "content": [{ "type": "text", "text": "Importer wired to grok import." }] }
+        }),
+    );
+    let jsonl_path = session_dir.join(format!("{sid}.jsonl"));
+    std::fs::write(&jsonl_path, jsonl).unwrap();
+
+    let source = install(store, "2.1.206 (Claude Code)");
+    let grok_home = tmp.join("grok-home");
+    std::fs::create_dir_all(grok_home.join("sessions")).unwrap();
+    let target = Installation {
+        cli_path: Some("grok".into()),
+        version: Some("grok 0.2.93".into()),
+        store_root: grok_home.join("sessions").display().to_string(),
+    };
+
+    let planned = engine::plan_native(
+        &claude(),
+        &source,
+        &grok(),
+        &target,
+        &SessionLocator {
+            native_id: sid.to_string(),
+            store_path: Some(jsonl_path.clone()),
+        },
+    )
+    .expect("plan native → grok");
+
+    assert_eq!(planned.report.kind, MigrationKind::Native);
+    assert_eq!(planned.report.target_agent, "grok-build");
+
+    let ledger = Ledger::new(tmp.join("appdata"));
+    let result =
+        engine::execute(&planned, &grok(), &target, &ledger).expect("execute native → grok");
+
+    assert_eq!(result.kind, MigrationKind::Native);
+    assert_eq!(result.target_agent, "grok-build");
+    assert_eq!(result.target_native_id, sid);
+    let verify = result.verify.expect("verify report");
+    assert!(
+        matches!(
+            verify.grade,
+            VerifyGrade::Exact | VerifyGrade::Equivalent
+        ),
+        "unexpected verify: {:?}",
+        verify
+    );
+    assert_eq!(result.resume_command.program, "grok");
+    assert!(result.resume_command.args.contains(&"--resume".into()));
+    assert!(result.resume_command.args.contains(&sid.into()));
+    assert!(result.resume_command.args.contains(&workspace_str));
+
+    // Session lives under the real (Windows) workspace key, not the import rewrite.
+    let session_dir = PathBuf::from(&result.target_path);
+    assert!(
+        session_dir.join("chat_history.jsonl").is_file(),
+        "missing chat_history under {}",
+        session_dir.display()
+    );
+    let summary: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(session_dir.join("summary.json")).unwrap())
+            .unwrap();
+    assert_eq!(summary["info"]["cwd"].as_str(), Some(workspace_str.as_str()));
+    assert_eq!(summary["session_kind"].as_str(), Some("claude_import"));
+
+    // Codecs / other sources cannot native-write to Grok.
+    assert!(!grok().accepts_native_from("codex"));
 
     std::fs::remove_dir_all(&tmp).ok();
 }
