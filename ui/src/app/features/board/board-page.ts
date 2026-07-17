@@ -15,6 +15,9 @@ const LANE_ACCENTS: Record<string, string> = {
   antigravity: '#48c6d9',
   copilot: '#e88fa8',
   'grok-build': '#f0b429',
+  'factory-droid': '#ff6b4a',
+  pi: '#6b9fff',
+  junie: '#8b7cf6',
 };
 
 const COLLAPSED_CARD_LIMIT = 6;
@@ -28,6 +31,8 @@ interface AgentTrack {
   agentId: string;
   displayName: string;
   installed: boolean;
+  /** installed + launchNew — show the column launch control */
+  canLaunch: boolean;
   sessions: SessionSummary[];
 }
 
@@ -73,6 +78,9 @@ export class BoardPage {
 
   protected readonly dragSource = signal<string | null>(null);
   protected readonly migration = signal<MigrationRequest | null>(null);
+  /** agent id currently launching from a column/idle control; null when idle */
+  protected readonly launchingAgent = signal<string | null>(null);
+  protected readonly launchError = signal<string | null>(null);
 
   /** project identity -> aggregated data, including per-agent session lists */
   private readonly projectIndex = computed(() => {
@@ -171,6 +179,7 @@ export class BoardPage {
         agentId: l.agent.id,
         displayName: l.agent.displayName,
         installed: !!l.agent.installation,
+        canLaunch: !!l.agent.installation && l.agent.capabilities.launchNew,
         sessions: entry?.perAgent.get(l.agent.id) ?? [],
       }))
       .filter((t) => t.sessions.length > 0);
@@ -194,6 +203,7 @@ export class BoardPage {
         agentId: l.agent.id,
         displayName: l.agent.displayName,
         installed: true,
+        canLaunch: l.agent.capabilities.launchNew,
         sessions: [] as SessionSummary[],
       }));
   });
@@ -328,6 +338,33 @@ export class BoardPage {
   protected onMigrationClosed(performed: boolean): void {
     this.migration.set(null);
     if (performed) void this.store.refresh();
+  }
+
+  /** Open an agent interactively in the selected project's folder. */
+  protected async openAgent(agentId: string, event?: Event): Promise<void> {
+    event?.stopPropagation();
+    event?.preventDefault();
+    const path = this.activeEntry()?.path;
+    if (!path) {
+      this.launchError.set('Project folder path is unknown — cannot open an agent here.');
+      return;
+    }
+    this.launchingAgent.set(agentId);
+    this.launchError.set(null);
+    try {
+      await this.commands.launchAgentOnProject(agentId, path);
+    } catch (e) {
+      this.launchError.set(String(e));
+    } finally {
+      this.launchingAgent.set(null);
+    }
+  }
+
+  protected launchTitle(track: AgentTrack): string {
+    const path = this.activeEntry()?.path;
+    if (!path) return 'Project path unknown — cannot launch here';
+    if (this.launchingAgent() === track.agentId) return `Opening ${track.displayName}…`;
+    return `Open ${track.displayName} in ${path}`;
   }
 
   protected async openPreview(summary: SessionSummary): Promise<void> {

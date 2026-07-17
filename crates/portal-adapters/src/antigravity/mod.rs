@@ -222,6 +222,18 @@ impl AgentAdapter for AntigravityAdapter {
             cwd: cwd.to_string(),
         })
     }
+
+    fn open_project_command(
+        &self,
+        _inst: &Installation,
+        cwd: &str,
+    ) -> Result<CommandSpec> {
+        Ok(CommandSpec {
+            program: "agy".to_string(),
+            args: vec![cwd.to_string()],
+            cwd: cwd.to_string(),
+        })
+    }
 }
 
 fn find_conversation_db(gemini: &Path, id: &str) -> Option<PathBuf> {

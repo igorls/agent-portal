@@ -219,6 +219,18 @@ impl AgentAdapter for CopilotAdapter {
             cwd: cwd.to_string(),
         })
     }
+
+    fn open_project_command(
+        &self,
+        inst: &Installation,
+        cwd: &str,
+    ) -> Result<CommandSpec> {
+        Ok(CommandSpec {
+            program: edition_cli(inst).to_string(),
+            args: vec![cwd.to_string()],
+            cwd: cwd.to_string(),
+        })
+    }
 }
 
 /// `%APPDATA%\<edition>\User\workspaceStorage` for the first installed edition.

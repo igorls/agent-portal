@@ -109,6 +109,20 @@ fn command_uses_native_resume() {
 }
 
 #[test]
+fn open_project_launches_interactive_session_without_prompt() {
+    let adapter = GrokAdapter;
+    let launch = adapter
+        .open_project_command(&installation(), r"P:\demo\app")
+        .expect("open_project");
+    assert_eq!(launch.program, "grok");
+    assert_eq!(
+        launch.args,
+        vec!["--cwd".to_string(), r"P:\demo\app".to_string()]
+    );
+    assert_eq!(launch.cwd, r"P:\demo\app");
+}
+
+#[test]
 fn brief_target_launches_interactive_session_with_prompt() {
     let adapter = GrokAdapter;
     assert!(adapter.capabilities().launch_new);

@@ -1,7 +1,20 @@
 <div class="activity">
   <div class="head">
-    <h1>Activity</h1>
-    <p class="sub">Every migration is recorded here. Undo removes what a migration created — your source sessions are never touched.</p>
+    <div class="head-text">
+      <h1>Activity</h1>
+      <p class="sub">
+        Every migration is recorded here. Undo removes what a migration created — your source
+        sessions are never touched.
+      </p>
+    </div>
+    @if (!isEmpty()) {
+      <div class="head-stats mono">
+        <span class="hs"><b>{{ activeCount() }}</b> active</span>
+        @if (undoneCount() > 0) {
+          <span class="hs muted"><b>{{ undoneCount() }}</b> undone</span>
+        }
+      </div>
+    }
   </div>
 
   @if (note(); as n) {
@@ -19,35 +32,98 @@
       No migrations yet. Drag a session onto another agent to route it.
     </div>
   } @else {
-    <ul class="log">
-      @for (entry of entries(); track entry.id) {
-        <li class="row" [class.undone]="entry.undone">
-          <div class="route">
-            <span class="agent from">{{ agentLabel(entry.sourceAgent) }}</span>
-            <span class="arrow">→</span>
-            <span class="agent to">{{ agentLabel(entry.targetAgent) }}</span>
-          </div>
+    <div class="toolbar">
+      <input
+        class="search mono"
+        type="search"
+        placeholder="Filter agents, session ids…"
+        [value]="query()"
+        (input)="onQueryInput($event)"
+      />
+      <button
+        type="button"
+        class="filter-chip"
+        [class.on]="hideUndone()"
+        (click)="toggleHideUndone()"
+        [title]="hideUndone() ? 'Showing active migrations only' : 'Showing all migrations'"
+      >
+        {{ hideUndone() ? 'Active only' : 'Include undone' }}
+      </button>
+      <span class="filter-count mono">
+        {{ filteredEntries().length }}
+        {{ filteredEntries().length === 1 ? 'match' : 'matches' }}
+      </span>
+    </div>
 
-          <div class="detail">
-            <span class="grade" [class]="'g-' + entry.verifyGrade">{{ entry.verifyGrade }}</span>
-            <span class="ids mono" [title]="entry.sourceNativeId">
-              {{ entry.sourceNativeId.slice(0, 8) }} → {{ entry.targetNativeId.slice(0, 8) }}
-            </span>
-            <span class="when mono">{{ entry.at | date: 'MMM d, HH:mm' }}</span>
-          </div>
+    @if (filteredEntries().length === 0) {
+      <div class="state empty small">
+        <span class="glyph">⌀</span>
+        No migrations match this filter.
+      </div>
+    } @else {
+      <div class="log">
+        @for (group of dayGroups(); track group.key) {
+          <section class="day-group">
+            <header class="day-head">
+              <span class="day-label">{{ group.label }}</span>
+              <span class="day-count mono">{{ group.entries.length }}</span>
+            </header>
+            <ul class="day-list">
+              @for (entry of group.entries; track entry.id) {
+                <li class="row" [class.undone]="entry.undone">
+                  <div class="route">
+                    <span class="agent from" [style.--agent]="accent(entry.sourceAgent)">{{
+                      agentLabel(entry.sourceAgent)
+                    }}</span>
+                    <span class="arrow">→</span>
+                    <span class="agent to" [style.--agent]="accent(entry.targetAgent)">{{
+                      agentLabel(entry.targetAgent)
+                    }}</span>
+                  </div>
 
-          <div class="actions">
-            @if (entry.undone) {
-              <span class="undone-tag">undone</span>
-            } @else {
-              <button class="undo" (click)="undo(entry)" [disabled]="busy() === entry.id">
-                {{ busy() === entry.id ? '…' : 'Undo' }}
-              </button>
-            }
-          </div>
-        </li>
+                  <div class="detail">
+                    <span class="grade" [class]="'g-' + entry.verifyGrade">{{
+                      entry.verifyGrade
+                    }}</span>
+                    <span class="ids mono" [title]="entry.sourceNativeId + ' → ' + entry.targetNativeId">
+                      {{ entry.sourceNativeId.slice(0, 8) }} →
+                      {{ entry.targetNativeId.slice(0, 8) }}
+                    </span>
+                    <span class="when mono">{{ entry.at | date: 'HH:mm' }}</span>
+                  </div>
+
+                  <div class="actions">
+                    @if (entry.undone) {
+                      <span class="undone-tag">undone</span>
+                    } @else {
+                      <button
+                        type="button"
+                        class="undo"
+                        (click)="undo(entry)"
+                        [disabled]="busy() === entry.id"
+                      >
+                        {{ busy() === entry.id ? '…' : 'Undo' }}
+                      </button>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          </section>
+        }
+      </div>
+
+      @if (hiddenMigrationCount() > 0) {
+        <div class="more-row">
+          <button type="button" class="more" (click)="showMoreMigrations()">
+            Show {{ nextMigrationBatch() }} more
+          </button>
+          <button type="button" class="more ghost" (click)="showAllMigrations()">
+            Show all {{ filteredEntries().length }}
+          </button>
+        </div>
       }
-    </ul>
+    }
   }
 
   <section class="naming">
@@ -58,7 +134,9 @@
       }
     </div>
     <p class="sub">
-      A local model reads each session's recent activity and gives it a short title — all offline, your sessions are never sent anywhere. Sessions touched in the last 24 hours are named first, at a faster rate.
+      A local model reads each session's recent activity and gives it a short title — all offline,
+      your sessions are never sent anywhere. Sessions touched in the last 24 hours are named first,
+      at a faster rate.
     </p>
 
     @if (namingError(); as e) {
@@ -83,7 +161,9 @@
               @if (n.progress.currentProject) {
                 · <span class="proj">{{ n.progress.currentProject }}</span>
               }
-              @if (n.progress.current) { · {{ n.progress.current }} }
+              @if (n.progress.current) {
+                · {{ n.progress.current }}
+              }
             </span>
           } @else if (nextPassIn(); as secs) {
             <span class="next mono">
@@ -99,10 +179,19 @@
       </div>
 
       <div class="stats">
-        <div class="stat"><span class="num">{{ n.recent.named }}</span><span class="cap">named</span></div>
-        <div class="stat"><span class="num">{{ n.recent.stale }}</span><span class="cap">stale</span></div>
-        <div class="stat"><span class="num">{{ n.recent.pending }}</span><span class="cap">pending</span></div>
-        <div class="stat"><span class="num">{{ n.recent.total }}</span><span class="cap">last {{ n.windowHours }}h</span></div>
+        <div class="stat">
+          <span class="num">{{ n.recent.named }}</span><span class="cap">named</span>
+        </div>
+        <div class="stat">
+          <span class="num">{{ n.recent.stale }}</span><span class="cap">stale</span>
+        </div>
+        <div class="stat">
+          <span class="num">{{ n.recent.pending }}</span><span class="cap">pending</span>
+        </div>
+        <div class="stat">
+          <span class="num">{{ n.recent.total }}</span
+          ><span class="cap">last {{ n.windowHours }}h</span>
+        </div>
       </div>
       <p class="lib-note">
         {{ n.overall.named }} of {{ n.overall.total }} sessions named across your whole library.
@@ -120,26 +209,54 @@
           }
         </div>
       } @else {
-        <ul class="titles">
-          @for (t of n.entries; track t.agentId + t.nativeId) {
-            <li class="title-row" [class.stale]="!t.current">
-              <span class="ttl">
-                {{ t.title }}
-                @if (t.project) {
-                  <span class="proj">{{ t.project }}</span>
-                }
-              </span>
-              <span class="meta mono">
-                <span class="agent">{{ agentLabel(t.agentId) }}</span>
-                <span class="id" [title]="t.nativeId">{{ t.nativeId.slice(0, 8) }}</span>
-                @if (!t.current) {
-                  <span class="stale-tag">stale</span>
-                }
-                <span class="when">{{ t.updatedAt | date: 'MMM d, HH:mm' }}</span>
-              </span>
-            </li>
+        <button
+          type="button"
+          class="titles-toggle"
+          (click)="toggleTitles()"
+          [attr.aria-expanded]="titlesOpen()"
+        >
+          <span class="tt-label">
+            Generated titles
+            <span class="tt-count mono">{{ n.entries.length }}</span>
+          </span>
+          <span class="tt-chevron" [class.open]="titlesOpen()">▾</span>
+        </button>
+
+        @if (titlesOpen()) {
+          <ul class="titles">
+            @for (t of visibleTitles(); track t.agentId + t.nativeId) {
+              <li class="title-row" [class.stale]="!t.current">
+                <span class="ttl">
+                  {{ t.title }}
+                  @if (t.project) {
+                    <span class="proj">{{ t.project }}</span>
+                  }
+                </span>
+                <span class="meta mono">
+                  <span class="agent" [style.--agent]="accent(t.agentId)">{{
+                    agentLabel(t.agentId)
+                  }}</span>
+                  <span class="id" [title]="t.nativeId">{{ t.nativeId.slice(0, 8) }}</span>
+                  @if (!t.current) {
+                    <span class="stale-tag">stale</span>
+                  }
+                  <span class="when">{{ t.updatedAt | date: 'MMM d, HH:mm' }}</span>
+                </span>
+              </li>
+            }
+          </ul>
+
+          @if (hiddenTitleCount() > 0) {
+            <div class="more-row">
+              <button type="button" class="more" (click)="showMoreTitles()">
+                Show {{ nextTitleBatch() }} more
+              </button>
+              <button type="button" class="more ghost" (click)="showAllTitles()">
+                Show all {{ n.entries.length }}
+              </button>
+            </div>
           }
-        </ul>
+        }
       }
     }
   </section>

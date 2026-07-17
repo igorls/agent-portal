@@ -1,0 +1,12 @@
+{
+  "model": "custom:glm-5.2:cloud-0",
+  "reasoningEffort": "high",
+  "tokenUsage": {
+    "inputTokens": 1200,
+    "outputTokens": 340,
+    "cacheCreationTokens": 0,
+    "cacheReadTokens": 0,
+    "thinkingTokens": 0,
+    "factoryCredits": 0
+  }
+}

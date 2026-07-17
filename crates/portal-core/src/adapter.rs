@@ -130,6 +130,17 @@ pub trait AgentAdapter: Send + Sync {
         Err(PortalError::Unsupported("new_session_command"))
     }
 
+    /// Open this agent interactively in a workspace (no seed prompt).
+    /// Used by the board "Open with" action on a selected project folder.
+    /// Distinct from `new_session_command`, which seeds a handoff prompt.
+    fn open_project_command(
+        &self,
+        _inst: &Installation,
+        _cwd: &str,
+    ) -> Result<CommandSpec> {
+        Err(PortalError::Unsupported("open_project_command"))
+    }
+
     /// One-pass enumeration of the whole store. Default composes
     /// list_projects + list_sessions; adapters whose stores are cheaper to
     /// walk once (e.g. Codex's date-partitioned tree) override this.

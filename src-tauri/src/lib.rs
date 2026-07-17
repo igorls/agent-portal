@@ -60,6 +60,7 @@ pub fn run() {
             commands::execute_migration,
             commands::undo_migration,
             commands::launch_session,
+            commands::launch_agent_on_project,
             commands::launch_command,
             commands::list_activity,
             commands::naming_status,

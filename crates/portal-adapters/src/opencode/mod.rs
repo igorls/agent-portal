@@ -141,6 +141,19 @@ impl AgentAdapter for OpenCodeAdapter {
             cwd: cwd.to_string(),
         })
     }
+
+    fn open_project_command(
+        &self,
+        _inst: &Installation,
+        cwd: &str,
+    ) -> Result<CommandSpec> {
+        // Interactive TUI in the project (same as resume — no session id).
+        Ok(CommandSpec {
+            program: "opencode".to_string(),
+            args: vec![cwd.to_string()],
+            cwd: cwd.to_string(),
+        })
+    }
 }
 
 /// Open the store read-only. Plain READ_ONLY (not `immutable`) so we see data

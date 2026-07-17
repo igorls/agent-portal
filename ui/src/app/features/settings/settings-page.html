@@ -45,6 +45,31 @@
         </div>
       </section>
 
+      <section class="panel launch-panel">
+        <div class="section-heading">
+          <div>
+            <div class="section-title">Agent launch</div>
+            <h2>Terminal shell</h2>
+          </div>
+        </div>
+        <p class="section-copy">
+          When you open an agent from the board or migration wizard, Agent Portal starts a terminal
+          in the project folder. Choose which shell runs the agent command.
+        </p>
+        <label>
+          <span>Shell</span>
+          <select
+            class="shell-select"
+            [formField]="settingsForm.launchShell"
+            (change)="onLaunchShellChanged()"
+          >
+            @for (opt of shellOptions; track opt.id) {
+              <option [value]="opt.id">{{ opt.label }} — {{ opt.hint }}</option>
+            }
+          </select>
+        </label>
+      </section>
+
       @if (ollama(); as status) {
         <section class="panel hardware-panel">
           <div>
@@ -201,7 +226,7 @@
           <span class="saved">Saved and connection checked</span>
         }
         <button type="submit" [disabled]="settingsForm().invalid() || saving()">
-          {{ saving() ? 'Saving…' : 'Save naming model' }}
+          {{ saving() ? 'Saving…' : 'Save settings' }}
         </button>
       </footer>
     </form>

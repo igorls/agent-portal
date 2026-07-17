@@ -11,6 +11,10 @@ const AGENT_ACCENTS: Record<string, string> = {
   opencode: '#b98ae0',
   antigravity: '#48c6d9',
   copilot: '#e88fa8',
+  'grok-build': '#f0b429',
+  'factory-droid': '#ff6b4a',
+  pi: '#6b9fff',
+  junie: '#8b7cf6',
 };
 
 interface PeekRow {

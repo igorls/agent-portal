@@ -1,0 +1,10 @@
+{
+  "kind": "SessionA2uxEvent",
+  "event": {
+    "state": "IN_PROGRESS",
+    "agentEvent": {
+      "kind": "AgentStateUpdatedEvent",
+      "blob": "{\"currentDirectory\":\"P:\\\\demo\\\\app\",\"lastAgentName\":\"main\"}"
+    }
+  }
+}

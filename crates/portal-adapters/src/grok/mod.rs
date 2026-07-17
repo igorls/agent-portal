@@ -149,4 +149,16 @@ impl AgentAdapter for GrokAdapter {
             cwd: cwd.into(),
         })
     }
+
+    fn open_project_command(
+        &self,
+        _inst: &Installation,
+        cwd: &str,
+    ) -> Result<CommandSpec> {
+        Ok(CommandSpec {
+            program: "grok".into(),
+            args: vec!["--cwd".into(), cwd.into()],
+            cwd: cwd.into(),
+        })
+    }
 }

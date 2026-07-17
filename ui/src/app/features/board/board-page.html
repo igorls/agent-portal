@@ -31,6 +31,9 @@
   @if (previewError(); as e) {
     <span class="toolbar-error mono" [title]="e">preview failed</span>
   }
+  @if (launchError(); as e) {
+    <span class="toolbar-error mono" [title]="e">open failed</span>
+  }
 </div>
 
 @if (store.board(); as b) {
@@ -143,6 +146,20 @@
                   <span class="track-offline">offline</span>
                 }
                 <span class="track-count mono">{{ track.sessions.length }}</span>
+                @if (track.canLaunch) {
+                  <button
+                    type="button"
+                    class="track-launch"
+                    [disabled]="!ap.path || launchingAgent() === track.agentId"
+                    [title]="launchTitle(track)"
+                    [attr.aria-label]="launchTitle(track)"
+                    (click)="openAgent(track.agentId, $event)"
+                  >
+                    <span class="launch-icon" aria-hidden="true">{{
+                      launchingAgent() === track.agentId ? '…' : '▶'
+                    }}</span>
+                  </button>
+                }
               </header>
 
               @if (canDropInto(track.agentId)) {
@@ -237,6 +254,20 @@
                       <span class="idle-hint">drop</span>
                     } @else {
                       <span class="idle-hint muted">no sessions</span>
+                    }
+                    @if (track.canLaunch) {
+                      <button
+                        type="button"
+                        class="track-launch"
+                        [disabled]="!ap.path || launchingAgent() === track.agentId"
+                        [title]="launchTitle(track)"
+                        [attr.aria-label]="launchTitle(track)"
+                        (click)="openAgent(track.agentId, $event)"
+                      >
+                        <span class="launch-icon" aria-hidden="true">{{
+                          launchingAgent() === track.agentId ? '…' : '▶'
+                        }}</span>
+                      </button>
                     }
                   </div>
                 }

@@ -19,10 +19,15 @@ impl CommandSpec {
     /// Human-readable single line (double-quoted args). For display and for
     /// POSIX shells.
     pub fn display(&self) -> String {
+        self.posix_line()
+    }
+
+    /// POSIX-ish command line (double-quoted args that need it).
+    pub fn posix_line(&self) -> String {
         let mut parts = vec![self.program.clone()];
         parts.extend(self.args.iter().map(|a| {
-            if a.contains(' ') {
-                format!("\"{a}\"")
+            if a.is_empty() || a.contains(|c: char| c.is_whitespace() || "\"'\\$`!".contains(c)) {
+                format!("\"{}\"", a.replace('\\', "\\\\").replace('"', "\\\""))
             } else {
                 a.clone()
             }
@@ -40,6 +45,22 @@ impl CommandSpec {
                 .map(|a| format!("'{}'", a.replace('\'', "''"))),
         );
         parts.join(" ")
+    }
+
+    /// cmd.exe `/k` command line. Double-quotes args that need it; internal
+    /// quotes are doubled per cmd rules.
+    pub fn cmd_line(&self) -> String {
+        let mut parts = vec![quote_cmd(&self.program)];
+        parts.extend(self.args.iter().map(|a| quote_cmd(a)));
+        parts.join(" ")
+    }
+}
+
+fn quote_cmd(s: &str) -> String {
+    if s.is_empty() || s.contains(|c: char| c.is_whitespace() || c == '"') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
     }
 }
 

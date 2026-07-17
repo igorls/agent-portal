@@ -92,6 +92,11 @@ export class PortalCommands {
     return this.tauri.invoke<void>('launch_session', { agentId, nativeId, cwd });
   }
 
+  /** Open an installed agent interactively in a project folder. */
+  launchAgentOnProject(agentId: string, cwd: string): Promise<void> {
+    return this.tauri.invoke<void>('launch_agent_on_project', { agentId, cwd });
+  }
+
   launchCommand(spec: CommandSpec): Promise<void> {
     return this.tauri.invoke<void>('launch_command', { spec });
   }

@@ -7,8 +7,11 @@ pub mod claude_code;
 pub mod claude_cowork;
 pub mod codex;
 pub mod copilot;
+pub mod factory_droid;
 pub mod grok;
+pub mod junie;
 pub mod opencode;
+pub mod pi;
 
 use std::sync::Arc;
 
@@ -23,6 +26,9 @@ pub fn builtin_adapters() -> Vec<Arc<dyn AgentAdapter>> {
         Arc::new(antigravity::AntigravityAdapter),
         Arc::new(copilot::CopilotAdapter),
         Arc::new(grok::GrokAdapter),
+        Arc::new(factory_droid::FactoryDroidAdapter),
+        Arc::new(pi::PiAdapter),
+        Arc::new(junie::JunieAdapter),
     ]
 }
 

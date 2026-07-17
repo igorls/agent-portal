@@ -9,6 +9,30 @@ use crate::error::{PortalError, Result};
 use crate::migration::ollama;
 use crate::util::paths::atomic_write;
 
+/// Interactive shell used when Agent Portal opens an agent in a terminal
+/// (board quick-launch, resume, migration "Open in terminal").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum LaunchShell {
+    /// Platform default: PowerShell 7 → Windows PowerShell → cmd on Windows;
+    /// `$SHELL` (else zsh/bash) on macOS/Linux.
+    #[default]
+    Auto,
+    /// PowerShell 7+ (`pwsh`).
+    Pwsh,
+    /// Windows PowerShell 5.x (`powershell.exe`).
+    PowerShell,
+    /// Command Prompt (`cmd.exe`).
+    Cmd,
+    /// Bash (Git Bash / WSL bash on Windows, `/bin/bash` elsewhere).
+    Bash,
+    /// zsh (macOS/Linux).
+    Zsh,
+    /// fish (macOS/Linux).
+    Fish,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +41,9 @@ pub struct AppSettings {
     #[serde(default = "default_naming_model")]
     pub ollama_naming_model: String,
     pub ollama_model: String,
+    /// Shell that runs agent CLIs when launching from the board / wizard.
+    #[serde(default)]
+    pub launch_shell: LaunchShell,
 }
 
 fn default_naming_model() -> String {
@@ -29,6 +56,7 @@ impl Default for AppSettings {
             ollama_host: ollama::DEFAULT_BASE_URL.into(),
             ollama_naming_model: default_naming_model(),
             ollama_model: ollama::DEFAULT_MODEL.into(),
+            launch_shell: LaunchShell::Auto,
         }
     }
 }
@@ -107,13 +135,16 @@ mod tests {
     fn settings_persist_and_invalid_hosts_are_rejected() {
         let dir = std::env::temp_dir().join(format!("portal-settings-{}", uuid::Uuid::now_v7()));
         let store = SettingsStore::new(&dir);
+        assert_eq!(store.load().launch_shell, LaunchShell::Auto);
         let value = AppSettings {
             ollama_host: "http://model-box:11434".into(),
             ollama_naming_model: "qwen3:0.6b".into(),
             ollama_model: "qwen3:8b".into(),
+            launch_shell: LaunchShell::Pwsh,
         };
         store.save(&value).unwrap();
         assert_eq!(store.load().ollama_model, "qwen3:8b");
+        assert_eq!(store.load().launch_shell, LaunchShell::Pwsh);
         store
             .save(&AppSettings {
                 ollama_model: "qwen3:14b".into(),
@@ -134,6 +165,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(store.load().ollama_naming_model, "legacy:7b");
+        assert_eq!(store.load().launch_shell, LaunchShell::Auto);
         std::fs::remove_dir_all(dir).ok();
     }
 }

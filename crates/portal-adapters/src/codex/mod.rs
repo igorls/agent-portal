@@ -139,6 +139,18 @@ impl AgentAdapter for CodexAdapter {
         })
     }
 
+    fn open_project_command(
+        &self,
+        _inst: &Installation,
+        cwd: &str,
+    ) -> Result<CommandSpec> {
+        Ok(CommandSpec {
+            program: "codex".to_string(),
+            args: vec![],
+            cwd: cwd.to_string(),
+        })
+    }
+
     /// The store is date-partitioned with no per-project structure, so one
     /// walk enumerates everything and groups by normalized cwd.
     fn snapshot(&self, inst: &Installation) -> Result<Vec<(ProjectRef, Vec<SessionSummary>)>> {

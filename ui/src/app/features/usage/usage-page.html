@@ -1,0 +1,435 @@
+<div class="usage">
+  <header class="head">
+    <div class="head-text">
+      <h1>Usage</h1>
+      <p class="sub">
+        Local analytics from the session stores Agent Portal already reads — agents, models,
+        message volume, and activity over time. Nothing is sent off-machine.
+      </p>
+    </div>
+    <div class="head-actions">
+      <div class="range" role="group" aria-label="Time range">
+        @for (r of ranges; track r.id) {
+          <button
+            type="button"
+            class="range-btn"
+            [class.on]="range() === r.id"
+            (click)="setRange(r.id)"
+          >
+            {{ r.label }}
+          </button>
+        }
+      </div>
+      <button
+        type="button"
+        class="refresh"
+        (click)="refresh()"
+        [disabled]="store.refreshing()"
+        title="Rescan agent stores"
+      >
+        <span class="icon" [class.spin]="store.refreshing()">⟳</span>
+        {{ store.refreshing() ? 'Scanning' : 'Refresh' }}
+      </button>
+    </div>
+  </header>
+
+  @if (store.error(); as e) {
+    <div class="err mono">{{ e }}</div>
+  }
+  @if (ledgerError(); as e) {
+    <div class="err mono">{{ e }}</div>
+  }
+
+  @if (!store.board() && store.coldLoading()) {
+    <div class="state">Scanning agent stores…</div>
+  } @else if (!store.board()) {
+    <div class="state empty">
+      <span class="glyph">◌</span>
+      No board data yet. Refresh to scan installed agents.
+    </div>
+  } @else {
+    @if (report(); as r) {
+      <div class="kpis">
+        <div class="kpi">
+          <span class="num mono">{{ fmtCount(r.sessions) }}</span>
+          <span class="cap">sessions</span>
+          @if (r.range !== 'all' && r.sessionsAll !== r.sessions) {
+            <span class="hint mono">of {{ fmtCount(r.sessionsAll) }}</span>
+          }
+        </div>
+        <div class="kpi">
+          <span class="num mono">{{ fmtCount(r.messages) }}</span>
+          <span class="cap">messages</span>
+          @if (r.messagesApprox) {
+            <span class="hint">approx</span>
+          }
+        </div>
+        <div class="kpi">
+          <span class="num mono">{{ fmtTokens(r.estimatedTokens) }}</span>
+          <span class="cap">est. tokens</span>
+          <span class="hint">from store size</span>
+        </div>
+        <div class="kpi cost">
+          <span class="num mono">{{ fmtUsd(r.estimatedCostUsd) }}</span>
+          <span class="cap">est. cost</span>
+          @if (r.estimatedCostUsd != null) {
+            <span class="hint mono">
+              {{ coveragePct(r.costCoverage) }}% priced
+            </span>
+          } @else {
+            <span class="hint">no priced models</span>
+          }
+        </div>
+        <div class="kpi">
+          <span class="num mono">{{ r.agents }}</span>
+          <span class="cap">agents</span>
+        </div>
+        <div class="kpi">
+          <span class="num mono">{{ r.models }}</span>
+          <span class="cap">models</span>
+        </div>
+        <div class="kpi">
+          <span class="num mono">{{ r.projects }}</span>
+          <span class="cap">projects</span>
+        </div>
+        <div class="kpi">
+          <span class="num mono">{{ fmtBytes(r.bytes) }}</span>
+          <span class="cap">on disk</span>
+        </div>
+        @if (r.live > 0) {
+          <div class="kpi live">
+            <span class="num mono">{{ r.live }}</span>
+            <span class="cap">live now</span>
+          </div>
+        }
+      </div>
+
+      @if (r.generatedAt) {
+        <p class="scan-meta mono">
+          Snapshot {{ r.generatedAt | date: 'MMM d, HH:mm' }}
+          @if (r.undated > 0) {
+            @if (r.range === 'all') {
+              · {{ r.undated }} undated sessions
+            } @else {
+              · {{ r.undated }} undated sessions excluded from this range
+            }
+          }
+        </p>
+      }
+
+      <div class="grid">
+        <!-- activity timeline -->
+        <section class="card span-2 chart-card">
+          <header class="card-head">
+            <div class="card-title-block">
+              <h2>Activity</h2>
+              <span class="card-sub mono">sessions last touched</span>
+            </div>
+            <div class="chart-stats mono">
+              @if (activityPeak(); as peak) {
+                <span class="stat">
+                  <span class="stat-lab">peak</span>
+                  <span class="stat-val">{{ peak.count }}</span>
+                  <span class="stat-lab">on {{ peak.fullLabel }}</span>
+                </span>
+              }
+              <span class="stat">
+                <span class="stat-lab">in view</span>
+                <span class="stat-val">{{ activityTotal() }}</span>
+              </span>
+            </div>
+          </header>
+          @if (r.timeline.every((d) => d.count === 0)) {
+            <div class="card-empty">No session activity in this window.</div>
+          } @else {
+            <div
+              class="chart"
+              [class.has-hover]="hoverDay()"
+              role="img"
+              [attr.aria-label]="
+                'Activity chart, ' + activityTotal() + ' sessions in view, peak ' + (activityPeak()?.count ?? 0)
+              "
+            >
+              <div class="chart-y" aria-hidden="true">
+                @for (t of activityTicks(); track t) {
+                  <span
+                    class="y-tick"
+                    [class.zero]="t === 0"
+                    [class.top]="t === activityTicks()[activityTicks().length - 1]"
+                    [style.bottom.%]="(t / (activityTicks()[activityTicks().length - 1] || 1)) * 100"
+                  >{{ t }}</span>
+                }
+              </div>
+              <div class="chart-body">
+                <div class="chart-grid" aria-hidden="true">
+                  @for (t of activityTicks(); track t) {
+                    <div
+                      class="grid-line"
+                      [class.zero]="t === 0"
+                      [style.bottom.%]="(t / (activityTicks()[activityTicks().length - 1] || 1)) * 100"
+                    ></div>
+                  }
+                </div>
+                <div class="timeline" [style.--n]="r.timeline.length">
+                  @for (d of r.timeline; track d.key; let i = $index) {
+                    <div
+                      class="tl-col"
+                      [class.is-peak]="activityPeak()?.key === d.key && d.count > 0"
+                      [class.is-hover]="hoverDay() === d.key"
+                      [class.is-empty]="d.count === 0"
+                      (mouseenter)="onBarEnter(d.key)"
+                      (mouseleave)="onBarLeave()"
+                      (focus)="onBarEnter(d.key)"
+                      (blur)="onBarLeave()"
+                      tabindex="0"
+                      [attr.aria-label]="d.fullLabel + ': ' + d.count + ' sessions'"
+                    >
+                      <div class="tl-bar-wrap">
+                        <div
+                          class="tl-bar"
+                          [style.height.%]="chartBarPct(d.count, activityTicks())"
+                        >
+                          @if (hoverDay() === d.key && d.count > 0) {
+                            <div class="tl-tip" role="tooltip">
+                              <span class="tip-date">{{ d.fullLabel }}</span>
+                              <span class="tip-main mono">{{ d.count }} sessions</span>
+                              @if (d.messages > 0) {
+                                <span class="tip-sub mono">{{ fmtCount(d.messages) }} msgs</span>
+                              }
+                            </div>
+                          }
+                        </div>
+                      </div>
+                      @if (showTick(i, r.timeline.length)) {
+                        <span class="tl-label mono">{{ d.label }}</span>
+                      } @else {
+                        <span class="tl-label spacer"></span>
+                      }
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+          }
+        </section>
+
+        <!-- by agent -->
+        <section class="card">
+          <header class="card-head">
+            <h2>By agent</h2>
+            <span class="card-sub mono">session share</span>
+          </header>
+          @if (r.byAgent.length === 0) {
+            <div class="card-empty">No sessions in range.</div>
+          } @else {
+            <ul class="rank">
+              @for (b of r.byAgent; track b.key) {
+                <li class="rank-row" [style.--agent]="accent(b.key)" [title]="bucketTitle(b)">
+                  <div class="rank-top">
+                    <span class="dot"></span>
+                    <span class="name">{{ agentLabel(b.key) }}</span>
+                    <span class="val mono">{{ b.count }}</span>
+                  </div>
+                  <div class="track">
+                    <div class="fill" [style.width.%]="barPct(b.count, agentMax())"></div>
+                  </div>
+                  <div class="rank-meta mono">
+                    {{ fmtCount(b.messages) }} msgs · {{ fmtTokens(b.estimatedTokens) }} tok
+                    @if (b.estimatedCostUsd != null) {
+                      · ~{{ fmtUsd(b.estimatedCostUsd) }}
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <!-- by model -->
+        <section class="card">
+          <header class="card-head">
+            <h2>By model</h2>
+            <span class="card-sub mono">tokens &amp; est. cost</span>
+          </header>
+          @if (r.byModel.length === 0) {
+            <div class="card-empty">No sessions in range.</div>
+          } @else {
+            <ul class="rank">
+              @for (b of r.byModel; track b.key; let i = $index) {
+                <li
+                  class="rank-row"
+                  [style.--agent]="b.key === 'unknown' ? '#5d6578' : modelAccent(i)"
+                  [title]="bucketTitle(b)"
+                >
+                  <div class="rank-top">
+                    <span class="dot"></span>
+                    <span class="name mono">{{ b.label }}</span>
+                    <span class="val mono">
+                      @if (b.estimatedCostUsd != null) {
+                        ~{{ fmtUsd(b.estimatedCostUsd) }}
+                      } @else {
+                        {{ b.count }}
+                      }
+                    </span>
+                  </div>
+                  <div class="track">
+                    <div class="fill" [style.width.%]="barPct(b.count, modelMax())"></div>
+                  </div>
+                  <div class="rank-meta mono">
+                    {{ b.count }} sess · {{ fmtTokens(b.estimatedTokens) }} tok ·
+                    {{ sharePct(b.share) }}%
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <!-- top projects -->
+        <section class="card span-2">
+          <header class="card-head">
+            <h2>Top projects</h2>
+            <span class="card-sub mono">by session count</span>
+          </header>
+          @if (r.byProject.length === 0) {
+            <div class="card-empty">No projects in range.</div>
+          } @else {
+            <ul class="projects">
+              @for (b of r.byProject; track b.key) {
+                <li class="proj-row" [title]="b.key + ' · ' + bucketTitle(b)">
+                  <div class="proj-id">
+                    <span class="proj-name mono">{{ b.label }}</span>
+                    @if (b.key !== b.label) {
+                      <span class="proj-path mono">{{ b.key }}</span>
+                    }
+                  </div>
+                  <div class="proj-bar-wrap">
+                    <div class="track">
+                      <div class="fill accent" [style.width.%]="barPct(b.count, projectMax())"></div>
+                    </div>
+                  </div>
+                  <div class="proj-metrics mono">
+                    <span class="proj-count">{{ b.count }}</span>
+                    @if (b.estimatedCostUsd != null) {
+                      <span class="proj-cost">~{{ fmtUsd(b.estimatedCostUsd) }}</span>
+                    }
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <!-- migrations -->
+        <section class="card span-2">
+          <header class="card-head">
+            <h2>Migrations</h2>
+            <span class="card-sub mono">
+              {{ r.migrations.active }} active
+              @if (r.migrations.undone > 0) {
+                · {{ r.migrations.undone }} undone
+              }
+            </span>
+          </header>
+          @if (r.migrations.total === 0) {
+            <div class="card-empty">
+              No migrations in this window. Drag a session on the Board to route between agents.
+            </div>
+          } @else {
+            <div class="mig-layout">
+              <div class="mig-timeline">
+                <div
+                  class="chart compact"
+                  [class.has-hover]="hoverMigDay()"
+                  role="img"
+                  [attr.aria-label]="'Migrations over time, ' + r.migrations.total + ' total'"
+                >
+                  <div class="chart-y" aria-hidden="true">
+                    @for (t of migTicks(); track t) {
+                      <span
+                        class="y-tick"
+                        [class.zero]="t === 0"
+                        [class.top]="t === migTicks()[migTicks().length - 1]"
+                        [style.bottom.%]="(t / (migTicks()[migTicks().length - 1] || 1)) * 100"
+                      >{{ t }}</span>
+                    }
+                  </div>
+                  <div class="chart-body">
+                    <div class="chart-grid" aria-hidden="true">
+                      @for (t of migTicks(); track t) {
+                        <div
+                          class="grid-line"
+                          [class.zero]="t === 0"
+                          [style.bottom.%]="(t / (migTicks()[migTicks().length - 1] || 1)) * 100"
+                        ></div>
+                      }
+                    </div>
+                    <div class="timeline compact" [style.--n]="r.migrations.timeline.length">
+                      @for (d of r.migrations.timeline; track d.key; let i = $index) {
+                        <div
+                          class="tl-col"
+                          [class.is-hover]="hoverMigDay() === d.key"
+                          [class.is-empty]="d.count === 0"
+                          (mouseenter)="onMigBarEnter(d.key)"
+                          (mouseleave)="onMigBarLeave()"
+                          tabindex="0"
+                          [attr.aria-label]="d.fullLabel + ': ' + d.count + ' migrations'"
+                        >
+                          <div class="tl-bar-wrap">
+                            <div
+                              class="tl-bar mig"
+                              [style.height.%]="chartBarPct(d.count, migTicks())"
+                            >
+                              @if (hoverMigDay() === d.key && d.count > 0) {
+                                <div class="tl-tip" role="tooltip">
+                                  <span class="tip-date">{{ d.fullLabel }}</span>
+                                  <span class="tip-main mono">{{ d.count }} migrations</span>
+                                </div>
+                              }
+                            </div>
+                          </div>
+                          @if (showTick(i, r.migrations.timeline.length)) {
+                            <span class="tl-label mono">{{ d.label }}</span>
+                          } @else {
+                            <span class="tl-label spacer"></span>
+                          }
+                        </div>
+                      }
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <ul class="rank pairs">
+                @for (p of r.migrations.byPair; track p.source + p.target) {
+                  <li class="rank-row pair">
+                    <div class="rank-top route">
+                      <span class="agent" [style.--agent]="accent(p.source)">{{
+                        agentLabel(p.source)
+                      }}</span>
+                      <span class="arrow">→</span>
+                      <span class="agent" [style.--agent]="accent(p.target)">{{
+                        agentLabel(p.target)
+                      }}</span>
+                      <span class="val mono">{{ p.count }}</span>
+                    </div>
+                    <div class="track">
+                      <div class="fill accent" [style.width.%]="barPct(p.count, pairMax())"></div>
+                    </div>
+                  </li>
+                }
+              </ul>
+            </div>
+          }
+        </section>
+      </div>
+
+      <p class="footnote">
+        Counts come from cheap session peeks (not full transcript parses). Message totals may be
+        approximate for some agents. <strong>Est. tokens</strong> use store size ÷ 4 (same order of
+        magnitude as migration estimates). <strong>Est. cost</strong> applies public list rates with
+        an 85/15 input/output mix for priced models only — cache hits, batch discounts, and
+        subscriptions are not included. Model labels are whatever each agent stored on the session.
+      </p>
+    }
+  }
+</div>

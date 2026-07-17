@@ -143,6 +143,18 @@ impl AgentAdapter for ClaudeCodeAdapter {
         })
     }
 
+    fn open_project_command(
+        &self,
+        _inst: &Installation,
+        cwd: &str,
+    ) -> Result<CommandSpec> {
+        Ok(CommandSpec {
+            program: "claude".to_string(),
+            args: vec![],
+            cwd: cwd.to_string(),
+        })
+    }
+
     fn list_sessions(
         &self,
         inst: &Installation,

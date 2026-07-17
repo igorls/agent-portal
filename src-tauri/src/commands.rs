@@ -258,7 +258,42 @@ pub async fn launch_session(
             .installation(&agent_id)
             .ok_or_else(|| PortalError::Other(format!("agent '{agent_id}' not detected")))?;
         let spec = adapter.resume_command(&inst, &native_id, &cwd)?;
-        launch::launch_in_terminal(&spec)
+        let shell = s.settings.load().launch_shell;
+        launch::launch_in_terminal(&spec, shell)
+    })
+    .await
+}
+
+/// Open an installed agent interactively in a project folder (no session resume,
+/// no seed prompt). Powers the board "Open with" action.
+#[tauri::command]
+pub async fn launch_agent_on_project(
+    state: tauri::State<'_, Arc<AppState>>,
+    agent_id: String,
+    cwd: String,
+) -> Result<(), PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let cwd = cwd.trim();
+        if cwd.is_empty() {
+            return Err(PortalError::Other(
+                "project folder path is unknown — cannot open an agent here".into(),
+            ));
+        }
+        let adapter = s
+            .adapter(&agent_id)
+            .ok_or_else(|| PortalError::Other(format!("unknown agent '{agent_id}'")))?;
+        if !adapter.capabilities().launch_new {
+            return Err(PortalError::Other(format!(
+                "agent '{agent_id}' cannot launch a new session"
+            )));
+        }
+        let inst = s
+            .installation(&agent_id)
+            .ok_or_else(|| PortalError::Other(format!("agent '{agent_id}' not detected")))?;
+        let spec = adapter.open_project_command(&inst, cwd)?;
+        let shell = s.settings.load().launch_shell;
+        launch::launch_in_terminal(&spec, shell)
     })
     .await
 }
@@ -266,8 +301,16 @@ pub async fn launch_session(
 /// Run an already-built command (the resume/launch command a migration
 /// returned) in a terminal. Works for both native resume and brief launch.
 #[tauri::command]
-pub async fn launch_command(spec: CommandSpec) -> Result<(), PortalError> {
-    run_blocking(move || launch::launch_in_terminal(&spec)).await
+pub async fn launch_command(
+    state: tauri::State<'_, Arc<AppState>>,
+    spec: CommandSpec,
+) -> Result<(), PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let shell = s.settings.load().launch_shell;
+        launch::launch_in_terminal(&spec, shell)
+    })
+    .await
 }
 
 #[tauri::command]

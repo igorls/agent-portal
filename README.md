@@ -22,6 +22,9 @@ background session titling) — your sessions are never sent to any cloud servic
 | Antigravity (Gemini) | ✓ | — | protobuf + SQLite summaries |
 | GitHub Copilot | ✓ | — | VS Code chat sessions |
 | Grok Build | ✓ | Claude Code only | Native via `grok import`; brief for other sources |
+| Factory Droid | ✓ | — | `~/.factory/sessions`; resume + brief target |
+| Pi | ✓ | — | `~/.pi/agent/sessions`; resume + brief target |
+| Junie (JetBrains) | ✓ | — | `~/.junie/sessions`; resume + brief target |
 
 Adding an agent is one module in `crates/portal-adapters` plus one line in its
 registry, then making the conformance suite pass.
@@ -57,6 +60,7 @@ The Rust ↔ TypeScript boundary is typed end to end: Rust DTOs derive
 Download the installer for your platform from the
 [latest release](https://github.com/igorls/agent-portal/releases/latest)
 (`.dmg` for macOS, `.AppImage`/`.deb` for Linux, `.msi`/`.exe` for Windows).
+Release notes live in [CHANGELOG.md](CHANGELOG.md).
 
 On macOS or Linux you can grab and install the latest build in one line:
 
