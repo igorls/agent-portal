@@ -31,7 +31,10 @@ fn enumerates_project_and_session_from_header() {
 
     let summary = &sessions[0];
     assert_eq!(summary.native_id, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
-    assert_eq!(summary.title.as_deref(), Some("Add a Pi adapter to the portal."));
+    assert_eq!(
+        summary.title.as_deref(),
+        Some("Add a Pi adapter to the portal.")
+    );
     assert_eq!(summary.model.as_deref(), Some("glm-5.2:cloud"));
     assert_eq!(summary.message_count, Some(4));
     assert!(summary.message_count_exact);
@@ -59,11 +62,7 @@ fn reads_transcript_into_canonical_ir() {
     assert!(session.validate().is_empty(), "{:?}", session.validate());
     assert_eq!(session.fidelity, Fidelity::Full);
 
-    let content: Vec<_> = session
-        .timeline
-        .iter()
-        .filter(|t| !t.is_meta)
-        .collect();
+    let content: Vec<_> = session.timeline.iter().filter(|t| !t.is_meta).collect();
     assert_eq!(content.len(), 4);
     assert_eq!(content[0].role, Role::User);
     assert!(matches!(
@@ -96,9 +95,9 @@ fn reads_transcript_into_canonical_ir() {
 
     assert!(session.timeline.iter().any(|t| {
         t.is_meta
-            && t.blocks.iter().any(|b| {
-                matches!(b, Block::Meta { source_kind, .. } if source_kind == "model_change")
-            })
+            && t.blocks.iter().any(
+                |b| matches!(b, Block::Meta { source_kind, .. } if source_kind == "model_change"),
+            )
     }));
 }
 
@@ -107,7 +106,11 @@ fn resume_and_new_commands() {
     let adapter = PiAdapter;
     let inst = installation();
     let resume = adapter
-        .resume_command(&inst, "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", r"P:\demo\app")
+        .resume_command(
+            &inst,
+            "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            r"P:\demo\app",
+        )
         .expect("resume");
     assert_eq!(resume.program, "pi");
     assert_eq!(

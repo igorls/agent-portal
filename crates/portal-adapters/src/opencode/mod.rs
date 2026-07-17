@@ -142,11 +142,7 @@ impl AgentAdapter for OpenCodeAdapter {
         })
     }
 
-    fn open_project_command(
-        &self,
-        _inst: &Installation,
-        cwd: &str,
-    ) -> Result<CommandSpec> {
+    fn open_project_command(&self, _inst: &Installation, cwd: &str) -> Result<CommandSpec> {
         // Interactive TUI in the project (same as resume — no session id).
         Ok(CommandSpec {
             program: "opencode".to_string(),

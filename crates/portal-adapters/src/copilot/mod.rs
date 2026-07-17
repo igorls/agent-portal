@@ -220,11 +220,7 @@ impl AgentAdapter for CopilotAdapter {
         })
     }
 
-    fn open_project_command(
-        &self,
-        inst: &Installation,
-        cwd: &str,
-    ) -> Result<CommandSpec> {
+    fn open_project_command(&self, inst: &Installation, cwd: &str) -> Result<CommandSpec> {
         Ok(CommandSpec {
             program: edition_cli(inst).to_string(),
             args: vec![cwd.to_string()],

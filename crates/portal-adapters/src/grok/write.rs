@@ -142,6 +142,24 @@ struct ImportResult {
     cwd: Option<String>,
 }
 
+fn grok_import_subcommand_available(program: &str) -> bool {
+    let Ok(output) = Command::new(program).arg("help").output() else {
+        return false;
+    };
+    if !output.status.success() {
+        return false;
+    }
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    text.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with("import ") || trimmed == "import"
+    })
+}
+
 fn run_grok_import(inst: &Installation, import_path: &Path) -> Result<ImportResult> {
     let program = inst
         .cli_path
@@ -158,6 +176,15 @@ fn run_grok_import(inst: &Installation, import_path: &Path) -> Result<ImportResu
             ))
         })?
         .to_path_buf();
+
+    // Guard: recent Grok CLIs removed `import` (it is no longer a subcommand and
+    // would be treated as a free-form TUI prompt). Fail closed with a clear note.
+    if !grok_import_subcommand_available(program) {
+        return Err(PortalError::Other(
+            "this Grok Build CLI no longer provides `grok import`; native Claude→Grok migration is unavailable until a replacement lands"
+                .into(),
+        ));
+    }
 
     let output = Command::new(program)
         .args(["import", "--json"])
@@ -324,9 +351,8 @@ fn patch_summary_cwd(session_dir: &Path, real_cwd: &str) -> Result<()> {
     })?;
     if value["info"]["cwd"].as_str() != Some(real_cwd) {
         value["info"]["cwd"] = Value::String(real_cwd.into());
-        let pretty = serde_json::to_vec_pretty(&value).map_err(|e| {
-            PortalError::Other(format!("serializing patched Grok summary: {e}"))
-        })?;
+        let pretty = serde_json::to_vec_pretty(&value)
+            .map_err(|e| PortalError::Other(format!("serializing patched Grok summary: {e}")))?;
         std::fs::write(&summary_path, pretty)?;
     }
     Ok(())
@@ -384,10 +410,7 @@ mod tests {
     #[test]
     fn encodes_windows_workspace_key_like_grok() {
         assert_eq!(percent_encode(r"P:\demo\app"), "P%3A%5Cdemo%5Capp");
-        assert_eq!(
-            percent_encode(r"C:\Users\igorl"),
-            "C%3A%5CUsers%5Cigorl"
-        );
+        assert_eq!(percent_encode(r"C:\Users\igorl"), "C%3A%5CUsers%5Cigorl");
     }
 
     #[test]

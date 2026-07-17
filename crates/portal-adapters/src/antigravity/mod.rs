@@ -223,11 +223,7 @@ impl AgentAdapter for AntigravityAdapter {
         })
     }
 
-    fn open_project_command(
-        &self,
-        _inst: &Installation,
-        cwd: &str,
-    ) -> Result<CommandSpec> {
+    fn open_project_command(&self, _inst: &Installation, cwd: &str) -> Result<CommandSpec> {
         Ok(CommandSpec {
             program: "agy".to_string(),
             args: vec![cwd.to_string()],

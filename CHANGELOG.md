@@ -42,6 +42,9 @@ pass at usage insight across your local agent fleet.
   deferred until each format has a stable import path.
 - Junie transcripts are reconstructed from UI event blocks, so intermediate
   assistant prose may be incomplete compared with Claude/Codex JSONL.
+- Recent **Grok Build** CLIs removed `grok import`. Native Claude→Grok
+  migration fails closed with a clear error (brief mode still works);
+  older CLIs that still ship `import` keep working.
 
 ### Installers
 Download the installer for your platform from the GitHub Release assets

@@ -103,19 +103,18 @@ fn summarize_session(path: &Path, project_key: &str, native_id: &str) -> Option<
         .find_map(|v| v["timestamp"].as_str().and_then(parse_ts))
         .or_else(|| meta.modified().ok().map(DateTime::<Utc>::from));
 
-    let model = model_from_settings(path)
-        .or_else(|| {
-            peek.tail
-                .iter()
-                .rev()
-                .chain(peek.head.iter().rev())
-                .find_map(|v| {
-                    v["message"]["modelId"]
-                        .as_str()
-                        .or_else(|| v["message"]["model"].as_str())
-                        .map(str::to_string)
-                })
-        });
+    let model = model_from_settings(path).or_else(|| {
+        peek.tail
+            .iter()
+            .rev()
+            .chain(peek.head.iter().rev())
+            .find_map(|v| {
+                v["message"]["modelId"]
+                    .as_str()
+                    .or_else(|| v["message"]["model"].as_str())
+                    .map(str::to_string)
+            })
+    });
 
     let (message_count, message_count_exact) = match peek.exact_line_count {
         Some(n) => {
@@ -242,9 +241,7 @@ pub fn read_session(inst: &Installation, locator: &SessionLocator) -> Result<Can
         .iter()
         .filter(|v| {
             v["type"].as_str() == Some("message")
-                && v["id"]
-                    .as_str()
-                    .is_some_and(|id| !active.contains(id))
+                && v["id"].as_str().is_some_and(|id| !active.contains(id))
         })
         .count();
     if abandoned > 0 {
@@ -262,10 +259,7 @@ pub fn read_session(inst: &Installation, locator: &SessionLocator) -> Result<Can
     // session_start itself is metadata; include title-bearing context as Meta.
     if let Some(start) = start {
         timeline.push(Turn {
-            id: start["id"]
-                .as_str()
-                .unwrap_or("session_start")
-                .to_string(),
+            id: start["id"].as_str().unwrap_or("session_start").to_string(),
             parent_id: None,
             role: Role::System,
             timestamp: None,
@@ -379,14 +373,12 @@ pub fn read_session(inst: &Installation, locator: &SessionLocator) -> Result<Can
 
     // Off-chain harness records that are useful as Meta (todo_state, …).
     for record in &records {
-        if record["type"].as_str() == Some("message") || record["type"].as_str() == Some("session_start")
+        if record["type"].as_str() == Some("message")
+            || record["type"].as_str() == Some("session_start")
         {
             continue;
         }
-        if record["id"]
-            .as_str()
-            .is_some_and(|id| active.contains(id))
-        {
+        if record["id"].as_str().is_some_and(|id| active.contains(id)) {
             continue;
         }
         let Some(kind) = record["type"].as_str() else {
@@ -520,7 +512,7 @@ fn content_blocks(msg: &Value) -> Vec<Block> {
                     output,
                     is_error: item["is_error"].as_bool().unwrap_or(false),
                 }
-            },
+            }
             other => Block::Meta {
                 source_kind: other.unwrap_or("unknown-content").into(),
                 raw: item.clone(),

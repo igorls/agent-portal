@@ -62,7 +62,11 @@ fn reads_event_stream_into_canonical_ir() {
     assert!(session.validate().is_empty(), "{:?}", session.validate());
 
     let content: Vec<_> = session.timeline.iter().filter(|t| !t.is_meta).collect();
-    assert!(content.len() >= 4, "expected user+thought+tools+result, got {}", content.len());
+    assert!(
+        content.len() >= 4,
+        "expected user+thought+tools+result, got {}",
+        content.len()
+    );
 
     assert_eq!(content[0].role, Role::User);
     assert!(matches!(
@@ -71,10 +75,7 @@ fn reads_event_stream_into_canonical_ir() {
     ));
 
     assert!(content.iter().any(|t| {
-        t.role == Role::Assistant
-            && t.blocks
-                .iter()
-                .any(|b| matches!(b, Block::Thinking { .. }))
+        t.role == Role::Assistant && t.blocks.iter().any(|b| matches!(b, Block::Thinking { .. }))
     }));
 
     assert!(content.iter().any(|t| {

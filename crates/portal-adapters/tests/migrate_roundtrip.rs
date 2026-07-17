@@ -431,7 +431,8 @@ fn brief_mode_to_grok_build_writes_handoff_and_launch_command() {
     assert!(planned.report.resume_preview.contains("grok"));
 
     let ledger = Ledger::new(tmp.join("appdata"));
-    let result = engine::execute(&planned, &grok(), &target, &ledger).expect("execute brief → grok");
+    let result =
+        engine::execute(&planned, &grok(), &target, &ledger).expect("execute brief → grok");
 
     assert_eq!(result.kind, MigrationKind::Brief);
     assert_eq!(result.target_agent, "grok-build");
@@ -465,6 +466,31 @@ fn claude_to_grok_native_import_via_cli() {
         .unwrap_or(false);
     if !grok_available {
         eprintln!("skipping claude_to_grok_native_import_via_cli: grok CLI not available");
+        return;
+    }
+    // Grok 0.2.103+ dropped the `import` subcommand; skip until the new path lands.
+    // Probe via `grok help` — never run `grok import` itself (treated as a TUI prompt).
+    let import_available = std::process::Command::new("grok")
+        .arg("help")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            );
+            text.lines().any(|line| {
+                let trimmed = line.trim_start();
+                trimmed.starts_with("import ") || trimmed == "import"
+            })
+        })
+        .unwrap_or(false);
+    if !import_available {
+        eprintln!(
+            "skipping claude_to_grok_native_import_via_cli: `grok import` not available on this CLI"
+        );
         return;
     }
 
@@ -553,10 +579,7 @@ fn claude_to_grok_native_import_via_cli() {
     assert_eq!(result.target_native_id, sid);
     let verify = result.verify.expect("verify report");
     assert!(
-        matches!(
-            verify.grade,
-            VerifyGrade::Exact | VerifyGrade::Equivalent
-        ),
+        matches!(verify.grade, VerifyGrade::Exact | VerifyGrade::Equivalent),
         "unexpected verify: {:?}",
         verify
     );
@@ -575,7 +598,10 @@ fn claude_to_grok_native_import_via_cli() {
     let summary: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(session_dir.join("summary.json")).unwrap())
             .unwrap();
-    assert_eq!(summary["info"]["cwd"].as_str(), Some(workspace_str.as_str()));
+    assert_eq!(
+        summary["info"]["cwd"].as_str(),
+        Some(workspace_str.as_str())
+    );
     assert_eq!(summary["session_kind"].as_str(), Some("claude_import"));
 
     // Codecs / other sources cannot native-write to Grok.

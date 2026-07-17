@@ -53,11 +53,7 @@ impl AgentAdapter for PiAdapter {
     }
 
     fn detect(&self, env: &HostEnv) -> Option<Installation> {
-        let default = env
-            .home
-            .join(".pi")
-            .join("agent")
-            .join("sessions");
+        let default = env.home.join(".pi").join("agent").join("sessions");
         let store_root = env.store_root(ID, default);
         let cli = find_cli(&env.path_dirs, "pi");
         if !store_root.is_dir() && cli.is_none() {
@@ -128,11 +124,7 @@ impl AgentAdapter for PiAdapter {
         })
     }
 
-    fn open_project_command(
-        &self,
-        _inst: &Installation,
-        cwd: &str,
-    ) -> Result<CommandSpec> {
+    fn open_project_command(&self, _inst: &Installation, cwd: &str) -> Result<CommandSpec> {
         Ok(CommandSpec {
             program: "pi".into(),
             args: vec![],

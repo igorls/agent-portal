@@ -122,20 +122,12 @@ impl AgentAdapter for FactoryDroidAdapter {
     ) -> Result<CommandSpec> {
         Ok(CommandSpec {
             program: "droid".into(),
-            args: vec![
-                "--cwd".into(),
-                cwd.into(),
-                initial_prompt.into(),
-            ],
+            args: vec!["--cwd".into(), cwd.into(), initial_prompt.into()],
             cwd: cwd.into(),
         })
     }
 
-    fn open_project_command(
-        &self,
-        _inst: &Installation,
-        cwd: &str,
-    ) -> Result<CommandSpec> {
+    fn open_project_command(&self, _inst: &Installation, cwd: &str) -> Result<CommandSpec> {
         Ok(CommandSpec {
             program: "droid".into(),
             args: vec!["--cwd".into(), cwd.into()],

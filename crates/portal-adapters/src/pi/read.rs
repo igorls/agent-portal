@@ -242,7 +242,9 @@ pub fn read_session(inst: &Installation, locator: &SessionLocator) -> Result<Can
         .find(|v| {
             matches!(
                 v["type"].as_str(),
-                Some("message") | Some("compaction") | Some("model_change")
+                Some("message")
+                    | Some("compaction")
+                    | Some("model_change")
                     | Some("thinking_level_change")
             )
         })
@@ -261,9 +263,7 @@ pub fn read_session(inst: &Installation, locator: &SessionLocator) -> Result<Can
         .iter()
         .filter(|v| {
             v["type"].as_str() == Some("message")
-                && v["id"]
-                    .as_str()
-                    .is_some_and(|id| !active.contains(id))
+                && v["id"].as_str().is_some_and(|id| !active.contains(id))
         })
         .count();
     if abandoned > 0 {
@@ -607,7 +607,10 @@ fn tool_result_block(msg: &Value) -> Block {
 
 fn extract_usage(msg: &Value) -> Option<TokenUsage> {
     let u = msg.get("usage")?;
-    let input = u["input"].as_u64().or_else(|| u["input_tokens"].as_u64()).unwrap_or(0);
+    let input = u["input"]
+        .as_u64()
+        .or_else(|| u["input_tokens"].as_u64())
+        .unwrap_or(0);
     let output = u["output"]
         .as_u64()
         .or_else(|| u["output_tokens"].as_u64())

@@ -133,11 +133,7 @@ pub trait AgentAdapter: Send + Sync {
     /// Open this agent interactively in a workspace (no seed prompt).
     /// Used by the board "Open with" action on a selected project folder.
     /// Distinct from `new_session_command`, which seeds a handoff prompt.
-    fn open_project_command(
-        &self,
-        _inst: &Installation,
-        _cwd: &str,
-    ) -> Result<CommandSpec> {
+    fn open_project_command(&self, _inst: &Installation, _cwd: &str) -> Result<CommandSpec> {
         Err(PortalError::Unsupported("open_project_command"))
     }
 

@@ -64,10 +64,7 @@ pub fn snapshot(inst: &Installation) -> Result<Vec<(ProjectRef, Vec<SessionSumma
         let Some(summary) = summarize_session(&session_dir, &session_id, &entry) else {
             continue;
         };
-        let cwd = summary
-            .cwd
-            .clone()
-            .unwrap_or_else(|| "unknown".to_string());
+        let cwd = summary.cwd.clone().unwrap_or_else(|| "unknown".to_string());
         let key = normalize_cwd(&cwd);
         let project_entry = by_project.entry(key.clone()).or_insert_with(|| {
             (
@@ -111,8 +108,16 @@ fn load_index(root: &Path) -> Vec<IndexEntry> {
                 .as_str()
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
-            created_at: parse_ms(v["createdAt"].as_i64().or_else(|| v["createdAt"].as_u64().map(|n| n as i64))),
-            updated_at: parse_ms(v["updatedAt"].as_i64().or_else(|| v["updatedAt"].as_u64().map(|n| n as i64))),
+            created_at: parse_ms(
+                v["createdAt"]
+                    .as_i64()
+                    .or_else(|| v["createdAt"].as_u64().map(|n| n as i64)),
+            ),
+            updated_at: parse_ms(
+                v["updatedAt"]
+                    .as_i64()
+                    .or_else(|| v["updatedAt"].as_u64().map(|n| n as i64)),
+            ),
             status: v["status"].as_str().map(str::to_string),
         });
     }
@@ -144,15 +149,14 @@ fn summarize_session(
         .or_else(|| cwd_from_state(session_dir))
         .or_else(|| cwd_from_events_head(&events_path));
 
-    let title = index.task_name.clone().or_else(|| first_prompt(&events_path));
+    let title = index
+        .task_name
+        .clone()
+        .or_else(|| first_prompt(&events_path));
     let created_at = index.created_at.or_else(|| first_event_ts(&events_path));
     let updated_at = index
         .updated_at
-        .or_else(|| {
-            meta.modified()
-                .ok()
-                .map(DateTime::<Utc>::from)
-        });
+        .or_else(|| meta.modified().ok().map(DateTime::<Utc>::from));
 
     let model = last_model_from_events(&events_path);
     let (message_count, message_count_exact) = count_prompts(&events_path);
@@ -243,16 +247,15 @@ pub fn read_session(inst: &Installation, locator: &SessionLocator) -> Result<Can
             Some("SystemMessageEvent") => {
                 slots.push(Slot::Meta(record));
             }
-            Some("TaskStartedEvent") | Some("SkillsStatusEvent") | Some("UserMessagesCommittedToHistory")
+            Some("TaskStartedEvent")
+            | Some("SkillsStatusEvent")
+            | Some("UserMessagesCommittedToHistory")
             | Some("TaskState") => {
                 // harness noise — skip silently
             }
             Some("SessionA2uxEvent") => {
                 let agent_event = record["event"]["agentEvent"].clone();
-                let kind = agent_event["kind"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let kind = agent_event["kind"].as_str().unwrap_or("").to_string();
 
                 // Cwd can appear mid-stream.
                 if let Some(dir) = agent_event["currentDirectory"].as_str() {
@@ -857,7 +860,7 @@ fn cwd_from_state(session_dir: &Path) -> Option<String> {
 fn cwd_from_events_head(events_path: &Path) -> Option<String> {
     let file = std::fs::File::open(events_path).ok()?;
     let reader = std::io::BufReader::new(file);
-    for line in reader.lines().take(80).flatten() {
+    for line in reader.lines().take(80).map_while(Result::ok) {
         let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
@@ -873,7 +876,7 @@ fn cwd_from_events_head(events_path: &Path) -> Option<String> {
 fn first_prompt(events_path: &Path) -> Option<String> {
     let file = std::fs::File::open(events_path).ok()?;
     let reader = std::io::BufReader::new(file);
-    for line in reader.lines().take(200).flatten() {
+    for line in reader.lines().take(200).map_while(Result::ok) {
         let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
@@ -890,7 +893,7 @@ fn first_prompt(events_path: &Path) -> Option<String> {
 fn first_event_ts(events_path: &Path) -> Option<DateTime<Utc>> {
     let file = std::fs::File::open(events_path).ok()?;
     let reader = std::io::BufReader::new(file);
-    for line in reader.lines().take(20).flatten() {
+    for line in reader.lines().take(20).map_while(Result::ok) {
         let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
@@ -915,7 +918,7 @@ fn last_model_from_events(events_path: &Path) -> Option<String> {
         let _ = reader.read_line(&mut skip);
     }
     let mut last = None;
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         let Ok(v) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
@@ -942,7 +945,7 @@ fn count_prompts(events_path: &Path) -> (Option<u32>, bool) {
     };
     let reader = std::io::BufReader::new(file);
     let mut n = 0u32;
-    for line in reader.lines().flatten() {
+    for line in reader.lines().map_while(Result::ok) {
         if line.contains("\"UserPromptEvent\"") {
             n += 1;
         }

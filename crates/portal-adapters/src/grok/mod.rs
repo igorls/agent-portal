@@ -47,8 +47,7 @@ impl AgentAdapter for GrokAdapter {
             version_range_tested: "0.2.93".to_string(),
             notes: vec![
                 "Sessions live under ~/.grok/sessions, grouped by encoded workspace".into(),
-                "Native migration from Claude Code uses `grok import` (not raw store writes)"
-                    .into(),
+                "Native Claude→Grok uses `grok import` when the CLI still exposes it; recent CLIs may only support brief migrations".into(),
                 "Other sources migrate via handoff brief".into(),
                 "Encrypted reasoning payloads cannot be transferred".into(),
             ],
@@ -150,11 +149,7 @@ impl AgentAdapter for GrokAdapter {
         })
     }
 
-    fn open_project_command(
-        &self,
-        _inst: &Installation,
-        cwd: &str,
-    ) -> Result<CommandSpec> {
+    fn open_project_command(&self, _inst: &Installation, cwd: &str) -> Result<CommandSpec> {
         Ok(CommandSpec {
             program: "grok".into(),
             args: vec!["--cwd".into(), cwd.into()],

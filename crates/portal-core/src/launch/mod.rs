@@ -265,9 +265,7 @@ mod imp {
 
     fn resolve_unix_shell(shell: LaunchShell) -> Result<String> {
         match shell {
-            LaunchShell::Auto => {
-                Ok(std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into()))
-            }
+            LaunchShell::Auto => Ok(std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into())),
             LaunchShell::Bash => Ok("/bin/bash".into()),
             LaunchShell::Zsh => Ok("/bin/zsh".into()),
             LaunchShell::Fish => Ok("fish".into()),
