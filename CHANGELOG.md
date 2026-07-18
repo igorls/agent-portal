@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-18
+
+### Fixed
+- **Session naming** no longer re-names live sessions every pass as size/mtime
+  churns — that previously looped the most recent session and pinned the fast
+  cadence with a permanent “1 queued” feel.
+- Empty or content-less sessions get a local fallback title instead of staying
+  pending forever after a silent model failure.
+- The board keeps showing the last generated title while a session is still
+  being written; Activity treats live titles as current so coverage does not
+  thrash.
+
+### Installers
+Download the installer for your platform from the GitHub Release assets
+(macOS universal DMG, Windows MSI/NSIS, Linux AppImage/deb/rpm).
+
 ## [0.2.0] - 2026-07-17
 
 Broader multi-agent coverage, faster ways to jump into a project, and a first
@@ -82,7 +98,8 @@ Download the installer for your platform from the GitHub Release assets.
 ### Installers
 Download the installer for your platform from the GitHub Release assets.
 
-[Unreleased]: https://github.com/igorls/agent-portal/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/igorls/agent-portal/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/igorls/agent-portal/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/igorls/agent-portal/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/igorls/agent-portal/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/igorls/agent-portal/compare/v0.1.1...v0.1.2

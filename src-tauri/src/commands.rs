@@ -376,8 +376,9 @@ pub async fn naming_status(
             chrono::Utc::now() - chrono::Duration::hours(crate::naming::RECENT_WINDOW_HOURS);
         let mut recent = NamingCounts::default();
         let mut overall = NamingCounts::default();
-        // Per session still on the board: its revision and project label.
-        let mut info: HashMap<(&str, &str), (String, &str)> = HashMap::new();
+        // Per session still on the board: its revision, project label, and
+        // whether the agent may still be writing (live).
+        let mut info: HashMap<(&str, &str), (String, &str, bool)> = HashMap::new();
         for (project, session) in board
             .lanes
             .iter()
@@ -391,16 +392,20 @@ pub async fn naming_status(
             if is_recent {
                 recent.total += 1;
             }
+            // Live sessions grow continuously; an older generated title is not
+            // a backlog item — only count true pending (never named) or
+            // settled-but-stale sessions as work remaining.
             let bump = |c: &mut NamingCounts| match title_by_session.get(&key) {
                 None => c.pending += 1,
                 Some(t) if t.source_revision == revision => c.named += 1,
+                Some(_) if session.maybe_live => c.named += 1,
                 Some(_) => c.stale += 1,
             };
             bump(&mut overall);
             if is_recent {
                 bump(&mut recent);
             }
-            info.insert(key, (revision, project));
+            info.insert(key, (revision, project, session.maybe_live));
         }
 
         // Only surface titles for sessions still on the board; a title for a
@@ -408,13 +413,17 @@ pub async fn naming_status(
         let mut entries: Vec<NamingEntry> = titles
             .iter()
             .filter_map(|t| {
-                let (revision, project) = info.get(&(t.agent_id.as_str(), t.native_id.as_str()))?;
+                let (revision, project, maybe_live) =
+                    info.get(&(t.agent_id.as_str(), t.native_id.as_str()))?;
+                // While live, treat the last title as current so the list does
+                // not thrash between current/stale every few seconds.
+                let current = *revision == t.source_revision || *maybe_live;
                 Some(NamingEntry {
                     agent_id: t.agent_id.clone(),
                     native_id: t.native_id.clone(),
                     project: project.to_string(),
                     title: t.title.clone(),
-                    current: *revision == t.source_revision,
+                    current,
                     updated_at: chrono::DateTime::from_timestamp_millis(t.updated_at)
                         .unwrap_or_default(),
                 })

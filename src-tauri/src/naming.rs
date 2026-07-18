@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use portal_core::adapter::SessionLocator;
+use portal_core::dto::SessionSummary;
 use portal_core::ir::{tool_args_text, Block};
 use portal_core::migration::ollama;
 use tauri::Emitter;
@@ -21,6 +22,9 @@ const FAST_INTERVAL_SECS: i64 = 30;
 const IDLE_INTERVAL_SECS: i64 = 300;
 const WARMUP_SECS: i64 = 8;
 const BATCH: usize = 4;
+/// Below this, the local model has nothing useful to name — use a fallback
+/// title instead of retrying the same empty session forever.
+const MIN_ACTIVITY_CHARS: usize = 40;
 
 pub fn start(state: Arc<AppState>, app: tauri::AppHandle) {
     std::thread::Builder::new()
@@ -60,6 +64,22 @@ fn emit_progress(
     let _ = app.emit("naming-progress", snapshot);
 }
 
+/// Whether the worker should spend a slot on this session right now.
+///
+/// Live sessions keep changing size/mtime while the agent is writing, so a
+/// title stored against one revision immediately looks "stale" on the next
+/// board scan — that used to put the most recent live session in a rename
+/// loop. We only attempt a *first* title while live; refresh waits until the
+/// session settles. Empty/content-less sessions are cleared via a local
+/// fallback title rather than re-queued forever.
+pub fn needs_naming(summary: &SessionSummary, priority: u8) -> bool {
+    if summary.maybe_live {
+        // priority 0 = never named. Stale-while-live is expected noise.
+        return priority == 0;
+    }
+    priority < 2
+}
+
 /// Run one naming pass. Returns the number of sessions in the recency window
 /// that still lack a current title — the loop uses it to choose its cadence.
 fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
@@ -79,6 +99,7 @@ fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
         return 0;
     }
     let recent_cutoff = Utc::now() - chrono::Duration::hours(RECENT_WINDOW_HOURS);
+
     let board = state.registry.board(&state.env);
     let mut candidates = board
         .lanes
@@ -87,17 +108,14 @@ fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
         // Carry each session's project label so the UI can show where the work is.
         .flat_map(|p| p.sessions.iter().map(move |s| (p.label.as_str(), s)))
         .map(|(project, s)| {
-            (
-                state.index.title_refresh_priority(
-                    &s.agent_id,
-                    &s.native_id,
-                    &portal_core::index::session_revision(s),
-                ),
-                project,
-                s,
-            )
+            let priority = state.index.title_refresh_priority(
+                &s.agent_id,
+                &s.native_id,
+                &portal_core::index::session_revision(s),
+            );
+            (priority, project, s)
         })
-        .filter(|(priority, _, _)| *priority < 2)
+        .filter(|(priority, _, s)| needs_naming(s, *priority))
         .collect::<Vec<_>>();
     // Recency-first: the most recently touched sessions are named before older
     // ones, so the last 24h always drains first.
@@ -129,35 +147,8 @@ fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
             p.current_project = Some(project.clone());
         });
 
-        let named = (|| {
-            let adapter = state.adapter(&summary.agent_id)?;
-            let inst = state.installation(&summary.agent_id)?;
-            let session = adapter
-                .read_session(
-                    &inst,
-                    &SessionLocator {
-                        native_id: summary.native_id.clone(),
-                        store_path: Some(summary.store_path.clone().into()),
-                    },
-                )
-                .ok()?;
-            let activity = recent_activity(&session);
-            let title = ollama::title(
-                &settings.ollama_host,
-                &settings.ollama_naming_model,
-                &activity,
-            )?;
-            state
-                .index
-                .upsert_generated_title(
-                    &summary.agent_id,
-                    &summary.native_id,
-                    &title,
-                    &portal_core::index::session_revision(summary),
-                )
-                .ok()
-        })();
-        let _ = named;
+        let revision = portal_core::index::session_revision(summary);
+        let _ = name_one(state, summary, &settings, &revision);
 
         emit_progress(state, app, |p| {
             p.batch_done += 1;
@@ -179,11 +170,12 @@ fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
         .flat_map(|p| p.sessions.iter())
         .filter(|s| s.updated_at.is_some_and(|t| t >= recent_cutoff))
         .filter(|s| {
-            state.index.title_refresh_priority(
+            let priority = state.index.title_refresh_priority(
                 &s.agent_id,
                 &s.native_id,
                 &portal_core::index::session_revision(s),
-            ) < 2
+            );
+            needs_naming(s, priority)
         })
         .count() as u32;
 
@@ -194,6 +186,76 @@ fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
         p.last_pass_at = Some(Utc::now());
     });
     recent_pending
+}
+
+enum NameOutcome {
+    Named,
+    /// Leave pending and try again later (model down, locked file, missing install).
+    RetryLater,
+}
+
+fn name_one(
+    state: &AppState,
+    summary: &SessionSummary,
+    settings: &portal_core::settings::AppSettings,
+    revision: &str,
+) -> NameOutcome {
+    // Adapter/install/read failures are often transient on Windows (agent still
+    // writing, detect cache cold, file lock). Keep them pending so Activity
+    // "queued" stays aligned with worker cadence — do not permanent-skip.
+    let Some(adapter) = state.adapter(&summary.agent_id) else {
+        return NameOutcome::RetryLater;
+    };
+    let Some(inst) = state.installation(&summary.agent_id) else {
+        return NameOutcome::RetryLater;
+    };
+    let Ok(session) = adapter.read_session(
+        &inst,
+        &SessionLocator {
+            native_id: summary.native_id.clone(),
+            store_path: Some(summary.store_path.clone().into()),
+        },
+    ) else {
+        return NameOutcome::RetryLater;
+    };
+
+    let activity = recent_activity(&session);
+    let title = if activity.chars().count() < MIN_ACTIVITY_CHARS {
+        // Nothing for the model to chew on (empty Junie shells, aborted
+        // starts, etc.). A local fallback clears the queue without a retry loop.
+        fallback_title(summary)
+    } else {
+        match ollama::title(
+            &settings.ollama_host,
+            &settings.ollama_naming_model,
+            &activity,
+        ) {
+            Some(t) => t,
+            None => return NameOutcome::RetryLater,
+        }
+    };
+
+    match state.index.upsert_generated_title(
+        &summary.agent_id,
+        &summary.native_id,
+        &title,
+        revision,
+    ) {
+        Ok(()) => NameOutcome::Named,
+        Err(_) => NameOutcome::RetryLater,
+    }
+}
+
+fn fallback_title(summary: &SessionSummary) -> String {
+    if let Some(title) = summary
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| t.chars().count() >= 3)
+    {
+        return title.chars().take(80).collect();
+    }
+    "Empty session".into()
 }
 
 fn recent_activity(session: &portal_core::ir::CanonicalSession) -> String {
@@ -243,6 +305,56 @@ fn recent_activity(session: &portal_core::ir::CanonicalSession) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use chrono::Utc;
+    use portal_core::dto::SessionSummary;
+
+    fn summary(maybe_live: bool) -> SessionSummary {
+        SessionSummary {
+            agent_id: "a".into(),
+            native_id: "n".into(),
+            project_key: "p".into(),
+            title: None,
+            cwd: None,
+            git_branch: None,
+            model: None,
+            created_at: None,
+            updated_at: Some(Utc::now()),
+            message_count: Some(1),
+            message_count_exact: true,
+            size_bytes: 10,
+            store_path: "s".into(),
+            maybe_live,
+        }
+    }
+
+    #[test]
+    fn needs_naming_skips_stale_while_live() {
+        let live = summary(true);
+        assert!(needs_naming(&live, 0), "first title while live");
+        assert!(
+            !needs_naming(&live, 1),
+            "stale-while-live must not requeue"
+        );
+        assert!(!needs_naming(&live, 2));
+    }
+
+    #[test]
+    fn needs_naming_settled_session_refreshes_stale() {
+        let settled = summary(false);
+        assert!(needs_naming(&settled, 0));
+        assert!(needs_naming(&settled, 1));
+        assert!(!needs_naming(&settled, 2));
+    }
+
+    #[test]
+    fn fallback_title_prefers_summary_title() {
+        let mut s = summary(false);
+        assert_eq!(fallback_title(&s), "Empty session");
+        s.title = Some("  Hello world  ".into());
+        assert_eq!(fallback_title(&s), "Hello world");
+    }
+
     #[test]
     fn recent_activity_prefers_tail() {
         use portal_core::ir::*;

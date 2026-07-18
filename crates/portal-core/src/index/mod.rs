@@ -148,11 +148,32 @@ impl IndexStore {
 
     pub fn apply_generated_titles(&self, board: &mut BoardSnapshot) -> Result<()> {
         self.with_conn(|conn| {
-            let mut stmt = conn.prepare("SELECT title,source_revision FROM generated_titles WHERE agent_id=?1 AND native_id=?2").map_err(sql_err)?;
-            for lane in &mut board.lanes { for project in &mut lane.projects { for session in &mut project.sessions {
-                let row: Option<(String,String)> = stmt.query_row(rusqlite::params![session.agent_id,session.native_id], |r| Ok((r.get(0)?,r.get(1)?))).ok();
-                if let Some((title,_)) = row.filter(|(_,revision)| *revision == session_revision(session)) { session.title = Some(title); }
-            }}}
+            let mut stmt = conn
+                .prepare(
+                    "SELECT title,source_revision FROM generated_titles WHERE agent_id=?1 AND native_id=?2",
+                )
+                .map_err(sql_err)?;
+            for lane in &mut board.lanes {
+                for project in &mut lane.projects {
+                    for session in &mut project.sessions {
+                        let row: Option<(String, String)> = stmt
+                            .query_row(
+                                rusqlite::params![session.agent_id, session.native_id],
+                                |r| Ok((r.get(0)?, r.get(1)?)),
+                            )
+                            .ok();
+                        // Exact revision = up to date. While the agent is still
+                        // writing, size/mtime churn makes every stored title look
+                        // "stale" immediately — keep the last generated title on
+                        // the board until the session settles and can be refreshed.
+                        if let Some((title, stored_rev)) = row {
+                            if stored_rev == session_revision(session) || session.maybe_live {
+                                session.title = Some(title);
+                            }
+                        }
+                    }
+                }
+            }
             Ok(())
         })
     }
@@ -267,6 +288,83 @@ mod tests {
             board.lanes[0].projects[0].sessions[0].title.as_deref(),
             Some("Fix migration verification")
         );
+        std::fs::remove_dir_all(dir).ok();
+    }
+
+    #[test]
+    fn generated_titles_stick_on_live_sessions_when_revision_moves() {
+        let dir = std::env::temp_dir().join(format!("portal-live-title-{}", uuid::Uuid::now_v7()));
+        let store = IndexStore::open(&dir).unwrap();
+        // Named against an earlier size/mtime revision.
+        store
+            .upsert_generated_title("codex", "s1", "Work in progress title", "10:100:1")
+            .unwrap();
+
+        let mut session = crate::dto::SessionSummary {
+            agent_id: "codex".into(),
+            native_id: "s1".into(),
+            project_key: "p".into(),
+            title: Some("native prompt".into()),
+            cwd: None,
+            git_branch: None,
+            model: None,
+            created_at: None,
+            updated_at: None,
+            message_count: Some(5),
+            message_count_exact: true,
+            size_bytes: 999,
+            store_path: "x".into(),
+            maybe_live: true,
+        };
+        let mut board = BoardSnapshot {
+            lanes: vec![crate::dto::Lane {
+                agent: crate::dto::AgentDescriptor {
+                    id: "codex".into(),
+                    display_name: "Codex".into(),
+                    capabilities: crate::dto::Capabilities {
+                        store_kind: crate::dto::StoreKind::JsonlPerSession,
+                        read: crate::dto::SupportLevel::Full,
+                        write_native: crate::dto::SupportLevel::Full,
+                        watch: false,
+                        launch_resume: true,
+                        launch_new: true,
+                        context_tokens: None,
+                        write_confidence: None,
+                        version_range_tested: String::new(),
+                        notes: vec![],
+                    },
+                    installation: None,
+                },
+                projects: vec![crate::dto::ProjectGroup {
+                    key: "p".into(),
+                    label: "p".into(),
+                    cwd_normalized: None,
+                    sessions: vec![session.clone()],
+                }],
+                error: None,
+            }],
+            feasibility: vec![],
+            generated_at: chrono::Utc::now(),
+        };
+
+        store.apply_generated_titles(&mut board).unwrap();
+        assert_eq!(
+            board.lanes[0].projects[0].sessions[0].title.as_deref(),
+            Some("Work in progress title"),
+            "live sessions keep the last generated title even when revision drifted"
+        );
+
+        // Once settled, a stale revision must not paint — refresh is owed.
+        session.maybe_live = false;
+        board.lanes[0].projects[0].sessions[0] = session;
+        board.lanes[0].projects[0].sessions[0].title = Some("native prompt".into());
+        store.apply_generated_titles(&mut board).unwrap();
+        assert_eq!(
+            board.lanes[0].projects[0].sessions[0].title.as_deref(),
+            Some("native prompt"),
+            "settled sessions require a matching revision to overlay"
+        );
+
         std::fs::remove_dir_all(dir).ok();
     }
 
