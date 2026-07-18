@@ -332,10 +332,7 @@ mod tests {
     fn needs_naming_skips_stale_while_live() {
         let live = summary(true);
         assert!(needs_naming(&live, 0), "first title while live");
-        assert!(
-            !needs_naming(&live, 1),
-            "stale-while-live must not requeue"
-        );
+        assert!(!needs_naming(&live, 1), "stale-while-live must not requeue");
         assert!(!needs_naming(&live, 2));
     }
 
