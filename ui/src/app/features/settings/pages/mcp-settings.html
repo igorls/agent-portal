@@ -1,0 +1,62 @@
+<div class="stack">
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <div class="section-title">Local MCP (HTTP)</div>
+        <p>Agents query this machine’s sessions over loopback — same index as the board.</p>
+      </div>
+      @if (store.mcpStatus(); as mcp) {
+        <div class="probe" [class.ok]="mcp.running" [class.bad]="!mcp.running">
+          <span class="dot"></span>
+          {{ mcp.running ? 'Listening' : mcp.enabled ? 'Not running' : 'Disabled' }}
+        </div>
+      }
+    </div>
+    <label class="check-row">
+      <input
+        type="checkbox"
+        [checked]="store.settings().mcpHttpEnabled"
+        (change)="setEnabled($any($event.target).checked)"
+      />
+      <span>Enable HTTP MCP on 127.0.0.1</span>
+    </label>
+    <div class="host-row">
+      <label>
+        <span>Port</span>
+        <input
+          type="number"
+          [value]="store.settings().mcpHttpPort"
+          (input)="setPort($any($event.target).value)"
+          placeholder="17432"
+        />
+      </label>
+      <label>
+        <span>Bearer token (optional)</span>
+        <input
+          type="text"
+          [value]="store.settings().mcpHttpToken"
+          (input)="setToken($any($event.target).value)"
+          placeholder="empty = no auth"
+          autocomplete="off"
+        />
+      </label>
+    </div>
+    @if (store.mcpStatus()?.url; as url) {
+      <p class="section-copy mono mcp-url">
+        POST {{ url }}
+        @if (store.mcpStatus()?.tokenRequired) {
+          · Authorization: Bearer …
+        }
+      </p>
+    }
+  </section>
+
+  <footer class="save-bar">
+    @if (store.saved()) {
+      <span class="saved">Saved</span>
+    }
+    <button type="button" [disabled]="store.saving()" (click)="save()">
+      {{ store.saving() ? 'Saving…' : 'Save settings' }}
+    </button>
+  </footer>
+</div>

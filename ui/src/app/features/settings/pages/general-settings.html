@@ -1,0 +1,35 @@
+<div class="stack">
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <div class="section-title">Agent launch</div>
+        <h2>Terminal shell</h2>
+      </div>
+    </div>
+    <p class="section-copy">
+      When you open an agent from the board or migration wizard, Agent Portal starts a terminal in
+      the project folder. Choose which shell runs the agent command.
+    </p>
+    <label>
+      <span>Shell</span>
+      <select
+        class="shell-select"
+        [value]="store.settings().launchShell"
+        (change)="onShellChange($any($event.target).value)"
+      >
+        @for (opt of shellOptions; track opt.id) {
+          <option [value]="opt.id">{{ opt.label }} — {{ opt.hint }}</option>
+        }
+      </select>
+    </label>
+  </section>
+
+  <footer class="save-bar">
+    @if (store.saved()) {
+      <span class="saved">Saved</span>
+    }
+    <button type="button" [disabled]="store.saving()" (click)="save()">
+      {{ store.saving() ? 'Saving…' : 'Save settings' }}
+    </button>
+  </footer>
+</div>

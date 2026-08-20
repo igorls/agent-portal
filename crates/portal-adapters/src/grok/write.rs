@@ -1,27 +1,36 @@
-//! Native write into Grok Build via the official `grok import` CLI.
+//! Native write into Grok Build from Claude Code.
 //!
-//! Compatible origins today: Claude Code only (`claude-code`). The CLI reads a
-//! Claude project JSONL (or session id) and materializes a Grok session under
-//! `~/.grok/sessions`. We never synthesize `chat_history.jsonl` ourselves.
+//! Two paths, picked at write time:
 //!
-//! Windows note: current Grok builds treat only paths starting with `/` as
-//! absolute CWDs. Real Claude transcripts on Windows use `C:\…`, so we rewrite
-//! those fields to `/C:/…` for import, then re-home the session directory and
-//! patch `summary.json` back to the real workspace path.
+//! 1. **`grok import`** — older CLIs (validated against 0.2.93). The CLI reads
+//!    a Claude project JSONL and materializes a Grok session. Windows builds
+//!    of that importer only accept CWDs starting with `/`, so we rewrite
+//!    `C:\…` → `/C:/…` for the import copy, then re-home the session and
+//!    patch `summary.json` back to the real workspace path.
+//! 2. **Store synthesis** — Grok 0.2.103+ removed `import`. Grok 1.0.x will
+//!    resume a session that has `summary.json` (`chat_format_version = 1`)
+//!    plus `chat_history.jsonl`. Validated against 1.0.5: `grok --resume`
+//!    loads that pair and fills in `updates.jsonl` / events on first turn.
+//!
+//! We never call `grok import` on a CLI that no longer lists it (it would be
+//! treated as a TUI prompt).
 
+use std::collections::HashSet;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use portal_core::dto::Installation;
 use portal_core::error::{PortalError, Result};
-use portal_core::ir::{CanonicalSession, LossCode, LossNote};
+use portal_core::ir::{
+    tool_args_text, tool_output_text, Block, CanonicalSession, LossCode, LossNote, Role,
+};
 use portal_core::migration::types::{
     ArtifactKind, WriteOptions, WritePlan, WrittenArtifact, WrittenSession,
 };
-use portal_core::util::paths::quick_hash;
+use portal_core::util::paths::{atomic_write, quick_hash};
 
 /// Agent ids `grok import` is documented / validated to accept.
 pub const NATIVE_IMPORT_SOURCES: &[&str] = &["claude-code"];
@@ -34,9 +43,11 @@ pub fn plan_write(inst: &Installation, session: &CanonicalSession) -> Result<Wri
     ensure_compatible(session)?;
 
     let mut losses = session.losses.clone();
+    let (_, synthesis_losses) = emit_chat_history(session);
+    losses.extend(synthesis_losses);
     losses.push(LossNote {
         code: LossCode::UnknownRecord,
-        detail: "native path uses `grok import` (Claude Code → Grok); tool names may be remapped and thinking signatures are not preserved"
+        detail: "native Claude→Grok uses `grok import` when the CLI still has it, otherwise a chat_history.jsonl store Grok 1.0+ can resume; thinking signatures are not preserved"
             .into(),
         turn_id: None,
     });
@@ -59,19 +70,23 @@ pub fn write_session(
 ) -> Result<WrittenSession> {
     ensure_compatible(session)?;
 
+    let real_cwd = session.workspace.cwd.as_str();
+    if real_cwd.is_empty() {
+        return Err(PortalError::Other(
+            "cannot import into Grok without a working directory".into(),
+        ));
+    }
+
+    if !grok_import_cli_available(inst) {
+        return write_synthesized_store(inst, session);
+    }
+
     let source_path = PathBuf::from(&session.identity.store_path);
     if !source_path.is_file() {
         return Err(PortalError::Other(format!(
             "Claude session file not found for import: {}",
             source_path.display()
         )));
-    }
-
-    let real_cwd = session.workspace.cwd.as_str();
-    if real_cwd.is_empty() {
-        return Err(PortalError::Other(
-            "cannot import into Grok without a working directory".into(),
-        ));
     }
 
     let rewrite = cwd_needs_import_rewrite(real_cwd);
@@ -140,6 +155,239 @@ fn ensure_compatible(session: &CanonicalSession) -> Result<()> {
 struct ImportResult {
     session_id: String,
     cwd: Option<String>,
+}
+
+fn grok_import_cli_available(inst: &Installation) -> bool {
+    let Some(program) = inst.cli_path.as_deref().filter(|p| !p.is_empty()) else {
+        return false;
+    };
+    grok_import_subcommand_available(program)
+}
+
+fn grok_session_id(session: &CanonicalSession) -> String {
+    if uuid::Uuid::parse_str(&session.identity.native_id).is_ok() {
+        session.identity.native_id.clone()
+    } else {
+        uuid::Uuid::new_v4().to_string()
+    }
+}
+
+fn write_synthesized_store(
+    inst: &Installation,
+    session: &CanonicalSession,
+) -> Result<WrittenSession> {
+    let native_id = grok_session_id(session);
+    let dest = PathBuf::from(&inst.store_root)
+        .join(percent_encode(&session.workspace.cwd))
+        .join(&native_id);
+    if dest.exists() {
+        return Err(PortalError::Other(format!(
+            "Grok session already exists at {}",
+            dest.display()
+        )));
+    }
+    std::fs::create_dir_all(&dest)?;
+    match write_synthesized_files(&dest, session, &native_id) {
+        Ok(artifacts) => Ok(WrittenSession {
+            native_id,
+            primary_path: dest.display().to_string(),
+            artifacts,
+        }),
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&dest);
+            Err(error)
+        }
+    }
+}
+
+fn write_synthesized_files(
+    dest: &Path,
+    session: &CanonicalSession,
+    native_id: &str,
+) -> Result<Vec<WrittenArtifact>> {
+    let (records, _losses) = emit_chat_history(session);
+    if records.is_empty() {
+        return Err(PortalError::Other(
+            "cannot synthesize an empty Grok session".into(),
+        ));
+    }
+
+    let mut chat = String::new();
+    for record in &records {
+        chat.push_str(&serde_json::to_string(record).map_err(|e| {
+            PortalError::Other(format!("serializing Grok chat_history record: {e}"))
+        })?);
+        chat.push('\n');
+    }
+    let chat_path = dest.join("chat_history.jsonl");
+    atomic_write(&chat_path, chat.as_bytes())?;
+
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let title = session
+        .title
+        .as_deref()
+        .filter(|title| !title.trim().is_empty())
+        .unwrap_or("Imported from Claude Code");
+    let chat_messages = records
+        .iter()
+        .filter(|record| record["type"].as_str() != Some("system"))
+        .count();
+    let summary = json!({
+        "info": {
+            "id": native_id,
+            "cwd": session.workspace.cwd,
+        },
+        "session_summary": title,
+        "generated_title": title,
+        "created_at": now,
+        "updated_at": now,
+        "last_active_at": now,
+        "num_messages": records.len(),
+        "num_chat_messages": chat_messages,
+        "chat_format_version": 1,
+        "session_kind": "claude_import",
+        "head_branch": session.workspace.git_branch,
+    });
+    let summary_bytes = serde_json::to_vec_pretty(&summary)
+        .map_err(|e| PortalError::Other(format!("serializing Grok summary: {e}")))?;
+    atomic_write(&dest.join("summary.json"), &summary_bytes)?;
+
+    collect_dir_artifacts(dest)
+}
+
+fn emit_chat_history(session: &CanonicalSession) -> (Vec<Value>, Vec<LossNote>) {
+    let unanswered: HashSet<String> = session.unanswered_tool_calls().into_iter().collect();
+    let mut records = Vec::new();
+    let mut thinking_dropped = 0u32;
+    let mut interrupted = 0u32;
+
+    for turn in &session.timeline {
+        if turn.is_meta {
+            continue;
+        }
+        match turn.role {
+            Role::System => {}
+            Role::User | Role::Tool => {
+                let mut texts = Vec::new();
+                for block in &turn.blocks {
+                    match block {
+                        Block::Text { text } => texts.push(text.as_str()),
+                        Block::ToolResult {
+                            call_id, output, ..
+                        } => {
+                            records.push(json!({
+                                "type": "tool_result",
+                                "tool_call_id": call_id,
+                                "content": tool_output_text(output),
+                            }));
+                        }
+                        Block::Thinking { .. } => thinking_dropped += 1,
+                        _ => {}
+                    }
+                }
+                let joined = texts.join("\n\n");
+                if !joined.trim().is_empty() {
+                    records.push(json!({
+                        "type": "user",
+                        "content": [{ "type": "text", "text": joined }],
+                    }));
+                }
+            }
+            Role::Assistant => {
+                let mut texts = Vec::new();
+                let mut tool_calls = Vec::new();
+                for block in &turn.blocks {
+                    match block {
+                        Block::Text { text } => texts.push(text.clone()),
+                        Block::Thinking { .. } => thinking_dropped += 1,
+                        Block::ToolCall {
+                            call_id,
+                            name,
+                            arguments,
+                        } => {
+                            if unanswered.contains(call_id) {
+                                interrupted += 1;
+                                continue;
+                            }
+                            tool_calls.push(json!({
+                                "id": call_id,
+                                "name": name,
+                                "arguments": tool_args_text(arguments),
+                            }));
+                        }
+                        Block::ToolResult {
+                            call_id, output, ..
+                        } => {
+                            flush_assistant(
+                                &mut records,
+                                &mut texts,
+                                &mut tool_calls,
+                                turn.model.as_deref(),
+                            );
+                            records.push(json!({
+                                "type": "tool_result",
+                                "tool_call_id": call_id,
+                                "content": tool_output_text(output),
+                            }));
+                        }
+                        Block::Compaction { summary } => {
+                            texts.push(format!("[compacted] {summary}"));
+                        }
+                        Block::Meta { .. } => {}
+                    }
+                }
+                flush_assistant(
+                    &mut records,
+                    &mut texts,
+                    &mut tool_calls,
+                    turn.model.as_deref(),
+                );
+            }
+        }
+    }
+
+    let mut losses = Vec::new();
+    if thinking_dropped > 0 {
+        losses.push(LossNote {
+            code: LossCode::ThinkingDropped,
+            detail: format!(
+                "{thinking_dropped} thinking block(s) dropped — provider reasoning signatures can't be reconstructed"
+            ),
+            turn_id: None,
+        });
+    }
+    if interrupted > 0 {
+        losses.push(LossNote {
+            code: LossCode::InterruptedToolCall,
+            detail: format!(
+                "{interrupted} tool call(s) had no result (interrupted) and will be dropped"
+            ),
+            turn_id: None,
+        });
+    }
+    (records, losses)
+}
+
+fn flush_assistant(
+    records: &mut Vec<Value>,
+    texts: &mut Vec<String>,
+    tool_calls: &mut Vec<Value>,
+    model: Option<&str>,
+) {
+    if texts.is_empty() && tool_calls.is_empty() {
+        return;
+    }
+    let mut record = json!({
+        "type": "assistant",
+        "content": texts.join("\n\n"),
+        "tool_calls": tool_calls.clone(),
+    });
+    if let Some(model) = model {
+        record["model_id"] = json!(model);
+    }
+    records.push(record);
+    texts.clear();
+    tool_calls.clear();
 }
 
 fn grok_import_subcommand_available(program: &str) -> bool {
@@ -430,5 +678,135 @@ mod tests {
         assert!(!accepts_source("codex"));
         assert!(!accepts_source("grok-build"));
         assert!(!accepts_source("opencode"));
+    }
+
+    #[test]
+    fn synthesizes_resumeable_store_without_grok_cli() {
+        use chrono::Utc;
+        use portal_core::ir::{
+            Block, CanonicalSession, Fidelity, Role, SessionIdentity, Turn, UsageTotals, Workspace,
+            IR_VERSION,
+        };
+        use serde_json::{json, Value};
+        use std::path::PathBuf;
+
+        let tmp = std::env::temp_dir().join(format!(
+            "portal-grok-synth-{}-{}",
+            std::process::id(),
+            uuid::Uuid::now_v7()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let cwd = tmp.join("workspace");
+        std::fs::create_dir_all(&cwd).unwrap();
+        let sid = "55555555-5555-4555-8555-555555555555";
+        let session = CanonicalSession {
+            ir_version: IR_VERSION,
+            identity: SessionIdentity {
+                portal_id: uuid::Uuid::now_v7().to_string(),
+                native_id: sid.into(),
+                agent_id: "claude-code".into(),
+                store_path: "missing.jsonl".into(),
+                agent_version: Some("2.1.206".into()),
+                read_at: Utc::now(),
+            },
+            workspace: Workspace {
+                cwd: cwd.display().to_string(),
+                cwd_normalized: cwd.display().to_string(),
+                git_branch: Some("main".into()),
+                project_label: "workspace".into(),
+            },
+            title: Some("Synthetic Grok import".into()),
+            timeline: vec![
+                Turn {
+                    id: "u1".into(),
+                    parent_id: None,
+                    role: Role::User,
+                    timestamp: None,
+                    model: None,
+                    is_meta: false,
+                    blocks: vec![Block::Text {
+                        text: "Scaffold the importer".into(),
+                    }],
+                    usage: None,
+                    raw: None,
+                },
+                Turn {
+                    id: "a1".into(),
+                    parent_id: Some("u1".into()),
+                    role: Role::Assistant,
+                    timestamp: None,
+                    model: Some("claude-sonnet-4".into()),
+                    is_meta: false,
+                    blocks: vec![
+                        Block::Text {
+                            text: "Reading the module.".into(),
+                        },
+                        Block::ToolCall {
+                            call_id: "toolu_01".into(),
+                            name: "Read".into(),
+                            arguments: json!({"file_path": "mod.rs"}),
+                        },
+                    ],
+                    usage: None,
+                    raw: None,
+                },
+                Turn {
+                    id: "u2".into(),
+                    parent_id: Some("a1".into()),
+                    role: Role::User,
+                    timestamp: None,
+                    model: None,
+                    is_meta: false,
+                    blocks: vec![Block::ToolResult {
+                        call_id: "toolu_01".into(),
+                        output: json!("pub struct GrokAdapter;"),
+                        is_error: false,
+                    }],
+                    usage: None,
+                    raw: None,
+                },
+                Turn {
+                    id: "a2".into(),
+                    parent_id: Some("u2".into()),
+                    role: Role::Assistant,
+                    timestamp: None,
+                    model: Some("claude-sonnet-4".into()),
+                    is_meta: false,
+                    blocks: vec![Block::Text {
+                        text: "Importer ready.".into(),
+                    }],
+                    usage: None,
+                    raw: None,
+                },
+            ],
+            attachments: Vec::new(),
+            usage: UsageTotals::default(),
+            losses: Vec::new(),
+            fidelity: Fidelity::Partial,
+        };
+
+        let inst = Installation {
+            cli_path: None,
+            version: Some("grok 1.0.5".into()),
+            store_root: tmp.join("sessions").display().to_string(),
+        };
+        let written = write_session(&inst, &session, &WriteOptions::default()).unwrap();
+        assert_eq!(written.native_id, sid);
+        let dir = PathBuf::from(&written.primary_path);
+        let chat = std::fs::read_to_string(dir.join("chat_history.jsonl")).unwrap();
+        assert!(chat.contains("Scaffold the importer"));
+        assert!(chat.contains("\"name\":\"Read\""));
+        assert!(chat.contains("tool_result"));
+        let summary: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("summary.json")).unwrap())
+                .unwrap();
+        assert_eq!(summary["chat_format_version"].as_u64(), Some(1));
+        assert_eq!(summary["session_kind"].as_str(), Some("claude_import"));
+        assert_eq!(
+            summary["info"]["cwd"].as_str(),
+            Some(cwd.display().to_string().as_str())
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

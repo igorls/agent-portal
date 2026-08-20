@@ -1,6 +1,7 @@
 @if (isPeek) {
   <app-peek-panel />
 } @else {
+  <app-search-palette />
   <div class="shell">
     <header class="topbar" [class.macos]="isMac" data-tauri-drag-region>
       <div class="brand" data-tauri-drag-region>
@@ -22,6 +23,16 @@
       </nav>
 
       <div class="drag-spacer" data-tauri-drag-region></div>
+
+      <button
+        type="button"
+        class="search-chip mono"
+        [title]="'Search sessions (' + searchHotkey + ')'"
+        (click)="openSearch($event)"
+      >
+        Search
+        <kbd>{{ searchHotkey }}</kbd>
+      </button>
 
       <div class="status">
         @if (health(); as h) {

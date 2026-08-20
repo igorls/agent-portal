@@ -1,0 +1,246 @@
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgb(0 0 0 / 45%);
+  backdrop-filter: blur(2px);
+}
+
+.palette {
+  position: fixed;
+  z-index: 901;
+  top: min(18vh, 140px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(70vh, 520px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel, #161922);
+  box-shadow:
+    0 24px 48px rgb(0 0 0 / 45%),
+    0 0 0 1px rgb(255 255 255 / 4%) inset;
+  overflow: hidden;
+}
+
+.palette-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.scope-bar {
+  display: flex;
+  padding: 8px 12px 0;
+  gap: 8px;
+}
+
+.scope-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  background: rgb(255 255 255 / 3%);
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  cursor: pointer;
+  font-family: inherit;
+
+  &:hover {
+    color: var(--text-hi);
+    border-color: var(--accent-line, var(--line-strong));
+  }
+
+  &.active {
+    color: var(--text-hi);
+    background: var(--accent-soft, rgb(124 140 248 / 12%));
+    border-color: var(--accent-line, var(--line-strong));
+  }
+}
+
+.scope-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.62rem;
+  opacity: 0.85;
+}
+
+.scope-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28ch;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.7rem;
+}
+
+.scope-hint {
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 22ch;
+}
+
+
+
+.search-icon {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  opacity: 0.85;
+}
+
+.palette-input {
+  flex: 1 1 auto;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-hi);
+  font-size: 0.95rem;
+  font-family: inherit;
+
+  &::placeholder {
+    color: var(--text-dim);
+  }
+}
+
+.hint {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-dim);
+  font-family: var(--font-mono, monospace);
+}
+
+.palette-error {
+  padding: 10px 14px;
+  color: #f07178;
+  font-size: 0.82rem;
+}
+
+.palette-results {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  overflow: auto;
+  flex: 1 1 auto;
+}
+
+.hit {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+
+  &.active {
+    background: rgb(255 255 255 / 6%);
+  }
+}
+
+.agent-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex: 0 0 auto;
+}
+
+.hit-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.hit-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hit-title {
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-hi);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hit-when {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.live {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #5bbfa2;
+  border: 1px solid rgb(91 191 162 / 35%);
+  border-radius: 4px;
+  padding: 0 5px;
+}
+
+.hit-meta {
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.sep {
+  opacity: 0.5;
+}
+
+.kind {
+  color: var(--accent, #8b93a7);
+}
+
+.hit-snippet {
+  margin-top: 4px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.palette-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line-strong);
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}

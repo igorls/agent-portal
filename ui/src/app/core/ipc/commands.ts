@@ -112,4 +112,60 @@ export class PortalCommands {
   namingStatus(): Promise<NamingReport> {
     return this.tauri.invoke<NamingReport>('naming_status');
   }
+
+  searchSessions(query: {
+    q: string;
+    limit?: number;
+    agentIds?: string[];
+    project?: string | null;
+    projectId?: string | null;
+    includeContent?: boolean;
+    includeSemantic?: boolean;
+  }): Promise<import('./gen/SearchResponse').SearchResponse> {
+    return this.tauri.invoke<import('./gen/SearchResponse').SearchResponse>('search_sessions', {
+      query: {
+        q: query.q,
+        limit: query.limit ?? 30,
+        agentIds: query.agentIds ?? [],
+        project: query.project ?? null,
+        projectId: query.projectId ?? null,
+        includeContent: query.includeContent ?? true,
+        includeSemantic: query.includeSemantic ?? false,
+      },
+    });
+  }
+
+  searchIndexStatus(): Promise<import('./gen/SearchIndexStatus').SearchIndexStatus> {
+    return this.tauri.invoke<import('./gen/SearchIndexStatus').SearchIndexStatus>(
+      'search_index_status',
+    );
+  }
+
+  ensureWormdbSidecar(): Promise<number> {
+    return this.tauri.invoke<number>('ensure_wormdb_sidecar');
+  }
+
+  mcpHttpStatus(): Promise<{
+    enabled: boolean;
+    running: boolean;
+    port: number | null;
+    url: string | null;
+    tokenRequired: boolean;
+  }> {
+    return this.tauri.invoke<{
+      enabled: boolean;
+      running: boolean;
+      port: number | null;
+      url: string | null;
+      tokenRequired: boolean;
+    }>('mcp_http_status');
+  }
+
+  resetSemanticIndex(): Promise<string> {
+    return this.tauri.invoke<string>('reset_semantic_index');
+  }
+
+  setSemanticIndexingPaused(paused: boolean): Promise<boolean> {
+    return this.tauri.invoke<boolean>('set_semantic_indexing_paused', { paused });
+  }
 }

@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-20
+
+### Added
+- **Session viewer** for long transcripts: find-in-session (`Ctrl+F` / `/`),
+  a jump rail, and a window over the **latest** turns so a 2k-turn thread
+  stays usable. **Chat** mode shows user prompts plus the last assistant
+  reply in each sequence; **Work** keeps every prose turn; **Tools** expands
+  tool calls. Antigravity tool steps decode as real tool calls.
+- **Single-instance GUI** — a second launch focuses the existing window instead of
+  starting another process (avoids dual WormDB/MCP ownership).
+- **Global session search** — `Ctrl/⌘K` palette and `search_sessions` IPC:
+  - **Metadata** across all agents (title, project, path, model, id).
+  - **FTS content** via progressive `search.db` indexer (transcript text).
+  - **WormDB sidecar** lifecycle on loopback (HNSW-capable backend ready;
+    `mem_*` semantic indexing waits on embedder configuration).
+  Design: `docs/global-session-search.md` (rev5, sidecar-first).
+- **Local MCP (HTTP, primary)** — in-process on `127.0.0.1:17432/mcp` while the
+  app runs; same board/FTS/WormDB as the UI. Settings toggle + optional bearer.
+  Headless `portal-mcp` stdio remains for CI. See `docs/mcp.md`.
+
+### Fixed
+- **Claude → Grok native migration** works on Grok Build 1.0.x, which removed
+  `grok import`. The adapter now writes a resumeable Grok store
+  (`summary.json` + `chat_history.jsonl`, validated against 1.0.5). Older
+  CLIs that still ship `import` keep using the official importer.
+- **Windows WormDB sidecar** no longer crashes on clean machines (`0xC0000005`).
+  Ship a **baseline-CPU** `wormdb.exe` (vendored via `scripts/vendor-wormdb.ps1`
+  with `zig build -Doptimize=ReleaseSmall -Dcpu=baseline`), bind the sidecar to
+  **127.0.0.1**, use a writable data-dir cwd, and capture sidecar stderr under
+  the app data `wormdb/` folder for diagnostics.
+
+### Installers
+Download the installer for your platform from the GitHub Release assets
+(macOS universal DMG, Windows MSI/NSIS, Linux AppImage/deb/rpm).
+
 ## [0.2.1] - 2026-07-18
 
 ### Fixed
@@ -98,7 +133,8 @@ Download the installer for your platform from the GitHub Release assets.
 ### Installers
 Download the installer for your platform from the GitHub Release assets.
 
-[Unreleased]: https://github.com/igorls/agent-portal/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/igorls/agent-portal/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/igorls/agent-portal/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/igorls/agent-portal/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/igorls/agent-portal/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/igorls/agent-portal/compare/v0.1.2...v0.1.3

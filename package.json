@@ -1,6 +1,6 @@
 {
   "name": "agent-portal",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "description": "Desktop portability layer for coding-agent sessions — a task board to view and migrate sessions between installed agents.",
   "scripts": {
@@ -10,7 +10,10 @@
     "ui:start": "pnpm --dir ui start",
     "ui:build": "pnpm --dir ui build",
     "ui:test": "pnpm --dir ui test",
-    "gen-types": "cargo test -p portal-core --lib -- --quiet"
+    "gen-types": "cargo test -p portal-core --lib -- --quiet",
+    "mcp": "cargo run -p portal-tauri --bin portal-mcp",
+    "mcp:smoke": "pwsh -File scripts/mcp-smoke.ps1",
+    "mcp:http-smoke": "pwsh -File scripts/mcp-http-smoke.ps1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

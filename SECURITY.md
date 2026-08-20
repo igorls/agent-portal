@@ -25,13 +25,17 @@ Agent Portal is a local desktop application. It:
 - Writes migrated sessions and handoff briefs into a target agent's store, and
   records every migration in an undoable local ledger.
 - Makes model calls **only** to a local, optional Ollama server (for brief
-  polishing and session naming). It never sends your sessions to any remote
-  service.
+  polishing, session naming, and — when configured — local embeddings for
+  semantic search). It never sends your sessions to any remote service.
+- Will keep local search indexes (FTS and a WormDB sidecar data dir) under the
+  app data directory when content/semantic search is enabled. Those corpora
+  may contain transcript text. They stay on-device; the WormDB sidecar must
+  bind loopback only. See `docs/global-session-search.md`.
 
 Issues of particular interest include: writing outside an agent's intended store
 location, mishandling untrusted content from a session store (path traversal,
-injection into launched commands), or any path that would exfiltrate session
-data off the machine.
+injection into launched commands), any path that would exfiltrate session
+data off the machine, or a search sidecar listening beyond localhost.
 
 ## Supported versions
 

@@ -21,7 +21,7 @@ background session titling) — your sessions are never sent to any cloud servic
 | OpenCode | ✓ | ✓ | |
 | Antigravity (Gemini) | ✓ | — | protobuf + SQLite summaries |
 | GitHub Copilot | ✓ | — | VS Code chat sessions |
-| Grok Build | ✓ | Claude Code only | Native via `grok import`; brief for other sources |
+| Grok Build | ✓ | Claude Code only | Native store (or `grok import` on older CLIs); brief for other sources |
 | Factory Droid | ✓ | — | `~/.factory/sessions`; resume + brief target |
 | Pi | ✓ | — | `~/.pi/agent/sessions`; resume + brief target |
 | Junie (JetBrains) | ✓ | — | `~/.junie/sessions`; resume + brief target |
@@ -89,6 +89,27 @@ pnpm dev            # tauri dev (starts the Angular dev server + Rust app)
 pnpm gen-types      # regenerate TS bindings from Rust DTOs (ts-rs)
 cargo test --workspace
 ```
+
+### WormDB sidecar (semantic search)
+
+Agent Portal ships a **local** `wormdb` binary (not from `PATH`). Vendor it into
+`src-tauri/binaries/` (target-triple name + plain name):
+
+```powershell
+# Windows — build a portable binary first (baseline CPU; do not ship native-CPU builds)
+#   cd P:\wormdb; zig build -Doptimize=ReleaseSmall -Dcpu=baseline
+# Default looks at P:\wormdb\zig-out\bin\wormdb.exe
+.\scripts\vendor-wormdb.ps1
+.\scripts\vendor-wormdb.ps1 -Source C:\path\to\wormdb.exe
+```
+
+```sh
+# macOS / Linux
+./scripts/vendor-wormdb.sh /path/to/wormdb
+```
+
+Tauri bundles it via `bundle.externalBin`. Override only for debugging with
+`PORTAL_WORMDB` set to an **absolute** path.
 
 Before opening a PR, keep the checks CI runs green:
 

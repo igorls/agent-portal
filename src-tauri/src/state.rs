@@ -1,20 +1,32 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use portal_core::adapter::{AgentAdapter, HostEnv};
-use portal_core::dto::{Installation, NamingProgress};
+use portal_core::dto::{BoardSnapshot, Installation, NamingProgress};
 use portal_core::index::IndexStore;
 use portal_core::migration::engine::PlannedMigration;
 use portal_core::migration::ledger::Ledger;
 use portal_core::registry::AgentRegistry;
+use portal_core::search::{resolve_wormdb_binary, SearchStore, WormdbSidecar};
 use portal_core::settings::SettingsStore;
+
+use crate::mcp::{McpHttpRuntime, McpHttpServer};
+use crate::semantic_index::SemanticProgress;
 
 pub struct AppState {
     pub env: HostEnv,
     pub registry: AgentRegistry,
     pub ledger: Ledger,
     pub index: IndexStore,
+    /// Lexical content index (`search.db`). None if open failed (search degrades to meta).
+    pub search: Option<SearchStore>,
+    /// Optional WormDB sidecar (HNSW semantic backend). Started on demand.
+    pub wormdb: Option<WormdbSidecar>,
     pub settings: SettingsStore,
+    /// In-process HTTP MCP (loopback). None when disabled / failed to bind.
+    mcp_http: Mutex<Option<McpHttpServer>>,
     /// Detection results are cached: detect() shells out to `<cli> --version`
     /// which costs seconds for npm shims. Board refreshes repopulate this.
     installations: Mutex<HashMap<String, Installation>>,
@@ -22,25 +34,181 @@ pub struct AppState {
     plans: Mutex<HashMap<String, Arc<PlannedMigration>>>,
     /// Live state of the background naming worker, surfaced in the Activity view.
     naming: Mutex<NamingProgress>,
+    /// Hot board for instant metadata search (no per-keystroke SQLite deserialize).
+    board: Mutex<Option<Arc<BoardSnapshot>>>,
+    /// Live semantic indexer progress (Settings / status probes).
+    semantic: Mutex<SemanticProgress>,
+    /// Set when UI requests an immediate reindex pass (cleared by worker).
+    semantic_kick: AtomicBool,
+    /// User-requested pause of the background semantic embedder (resume continues).
+    semantic_paused: AtomicBool,
 }
 
 impl AppState {
-    pub fn new(app_data_dir: std::path::PathBuf) -> Self {
+    /// Build app state, resolving WormDB only from bundled paths / `PORTAL_WORMDB`.
+    ///
+    /// Pass Tauri resource dir and `src-tauri/binaries` via `wormdb_search_dirs`
+    /// so packaged and `tauri dev` builds find the shipped binary without PATH.
+    pub fn new(app_data_dir: PathBuf) -> Self {
+        Self::with_wormdb_search_dirs(app_data_dir, &[])
+    }
+
+    pub fn with_wormdb_search_dirs(app_data_dir: PathBuf, wormdb_search_dirs: &[PathBuf]) -> Self {
         let index = IndexStore::open(&app_data_dir).unwrap_or_else(|e| {
             // A broken cache must never take down the app; fall back to temp.
             eprintln!("index cache unavailable ({e}); using temp");
             IndexStore::open(&std::env::temp_dir().join("agent-portal")).expect("temp index")
         });
+        let search = match SearchStore::open(&app_data_dir) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                eprintln!("search.db unavailable ({e}); content search disabled");
+                None
+            }
+        };
+        let wormdb_bin = resolve_wormdb_binary(None, wormdb_search_dirs);
+        let wormdb = if wormdb_bin.is_file() {
+            eprintln!("WormDB binary: {}", wormdb_bin.display());
+            Some(WormdbSidecar::new(&app_data_dir, wormdb_bin, 0))
+        } else {
+            eprintln!(
+                "WormDB binary not found (looked under bundled dirs → {}); semantic sidecar disabled. \
+                 Vendor with scripts/vendor-wormdb.ps1 (or .sh) into src-tauri/binaries/",
+                wormdb_bin.display()
+            );
+            None
+        };
         Self {
             env: HostEnv::from_system(),
             registry: AgentRegistry::new(portal_adapters::builtin_adapters()),
             ledger: Ledger::new(app_data_dir.clone()),
             settings: SettingsStore::new(&app_data_dir),
             index,
+            search,
+            wormdb,
+            mcp_http: Mutex::new(None),
             installations: Mutex::new(HashMap::new()),
             plans: Mutex::new(HashMap::new()),
             naming: Mutex::new(NamingProgress::default()),
+            board: Mutex::new(None),
+            semantic: Mutex::new(SemanticProgress::default()),
+            semantic_kick: AtomicBool::new(false),
+            semantic_paused: AtomicBool::new(false),
         }
+    }
+
+    pub fn semantic_progress(&self) -> SemanticProgress {
+        let mut p = self.semantic.lock().unwrap().clone();
+        p.paused = self.semantic_paused();
+        p
+    }
+
+    pub fn set_semantic_progress(&self, f: impl FnOnce(&mut SemanticProgress)) {
+        let mut g = self.semantic.lock().unwrap();
+        f(&mut g);
+        g.paused = self.semantic_paused.load(Ordering::SeqCst);
+    }
+
+    pub fn kick_semantic_indexer(&self) {
+        self.semantic_kick.store(true, Ordering::SeqCst);
+    }
+
+    pub fn take_semantic_kick(&self) -> bool {
+        self.semantic_kick.swap(false, Ordering::SeqCst)
+    }
+
+    pub fn semantic_paused(&self) -> bool {
+        self.semantic_paused.load(Ordering::SeqCst)
+    }
+
+    /// Pause or resume background semantic embedding. Resume kicks the worker.
+    pub fn set_semantic_paused(&self, paused: bool) {
+        self.semantic_paused.store(paused, Ordering::SeqCst);
+        self.set_semantic_progress(|p| {
+            p.paused = paused;
+            if paused {
+                p.active = false;
+                p.current = Some("paused".into());
+            } else if p.current.as_deref() == Some("paused") {
+                p.current = Some("resuming…".into());
+            }
+        });
+        if !paused {
+            self.kick_semantic_indexer();
+        }
+    }
+
+    /// Start or restart HTTP MCP from current settings. No-op when disabled.
+    pub fn apply_mcp_http(self: &Arc<Self>) {
+        let cfg = self.settings.load();
+        // Drop previous listener first.
+        {
+            let mut slot = self.mcp_http.lock().unwrap();
+            if let Some(srv) = slot.take() {
+                srv.stop();
+            }
+        }
+        if !cfg.mcp_http_enabled {
+            eprintln!("mcp-http: disabled in settings");
+            return;
+        }
+        let token = {
+            let t = cfg.mcp_http_token.trim().to_string();
+            if t.is_empty() {
+                None
+            } else {
+                Some(t)
+            }
+        };
+        match crate::mcp::start_http(self.clone(), cfg.mcp_http_port, token) {
+            Ok(srv) => {
+                let rt = srv.runtime_snapshot();
+                eprintln!(
+                    "mcp-http: ready at http://127.0.0.1:{}/mcp (auth={})",
+                    rt.port.unwrap_or(0),
+                    if rt.token_required { "bearer" } else { "none" }
+                );
+                *self.mcp_http.lock().unwrap() = Some(srv);
+            }
+            Err(e) => eprintln!("mcp-http: failed to start: {e}"),
+        }
+    }
+
+    pub fn mcp_http_runtime(&self) -> McpHttpRuntime {
+        self.mcp_http
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.runtime_snapshot())
+            .unwrap_or_default()
+    }
+
+    /// Start WormDB sidecar if configured; returns bound port.
+    pub fn ensure_wormdb(&self) -> portal_core::error::Result<u16> {
+        let sc = self.wormdb.as_ref().ok_or_else(|| {
+            portal_core::error::PortalError::Other(
+                "WormDB binary not found at startup (shipped under src-tauri/binaries; \
+                 override with PORTAL_WORMDB path if needed)"
+                    .into(),
+            )
+        })?;
+        sc.ensure_running()
+    }
+
+    /// Publish the latest board into the hot in-process cache (search + future indexers).
+    pub fn publish_board(&self, board: BoardSnapshot) {
+        *self.board.lock().unwrap() = Some(Arc::new(board));
+    }
+
+    /// Hot board snapshot for metadata search. Falls back to disk cache once.
+    pub fn hot_board(&self) -> Option<Arc<BoardSnapshot>> {
+        if let Some(b) = self.board.lock().unwrap().clone() {
+            return Some(b);
+        }
+        let cached = self.index.cached_board()?;
+        let arc = Arc::new(cached);
+        *self.board.lock().unwrap() = Some(arc.clone());
+        Some(arc)
     }
 
     /// Snapshot the worker's live progress.

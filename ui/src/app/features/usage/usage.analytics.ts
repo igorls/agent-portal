@@ -16,6 +16,8 @@ export interface FlatSession {
   projectKey: string;
   projectLabel: string;
   cwd: string | null;
+  /** Forward-slash, drive-letter-lowercased path used to align the same project. */
+  cwdNormalized: string | null;
   createdAtMs: number | null;
   updatedAtMs: number | null;
   /** Activity timestamp used for range filtering (updated → created). */
@@ -122,7 +124,7 @@ export function flattenBoard(board: BoardSnapshot | null): FlatSession[] {
   for (const lane of board.lanes) {
     for (const project of lane.projects) {
       for (const s of project.sessions) {
-        out.push(flattenSession(s, project.label, project.key));
+        out.push(flattenSession(s, project.label, project.key, project.cwdNormalized));
       }
     }
   }
@@ -133,12 +135,14 @@ function flattenSession(
   s: SessionSummary,
   projectLabel: string,
   projectKey: string,
+  projectCwdNormalized: string | null,
 ): FlatSession {
   const createdAtMs = parseMs(s.createdAt);
   const updatedAtMs = parseMs(s.updatedAt);
   const model = normalizeModel(s.model);
   const sizeBytes = s.sizeBytes ?? 0;
   const estimatedTokens = estimateTokensFromBytes(sizeBytes);
+  const rawCwd = projectCwdNormalized ?? s.cwd;
   return {
     agentId: s.agentId,
     nativeId: s.nativeId,
@@ -146,6 +150,7 @@ function flattenSession(
     projectKey,
     projectLabel: projectLabel || projectKey,
     cwd: s.cwd,
+    cwdNormalized: rawCwd ? normalizeCwd(rawCwd) : null,
     createdAtMs,
     updatedAtMs,
     activityMs: updatedAtMs ?? createdAtMs,
@@ -181,14 +186,14 @@ export function buildUsageReport(
   );
   const byProject = rankBuckets(
     filtered,
-    (s) => s.cwd ?? s.projectKey,
+    projectIdentity,
     (key, samples) => samples[0]?.projectLabel ?? key,
   ).slice(0, 12);
 
   const models = new Set(
     filtered.map((s) => s.model).filter((m): m is string => !!m),
   ).size;
-  const projects = new Set(filtered.map((s) => s.cwd ?? s.projectKey)).size;
+  const projects = new Set(filtered.map(projectIdentity)).size;
   const agents = new Set(filtered.map((s) => s.agentId)).size;
   const messages = filtered.reduce((a, s) => a + s.messageCount, 0);
   const messagesApprox = filtered.some((s) => s.messageCount > 0 && !s.messageCountExact);
@@ -288,6 +293,22 @@ function parseMs(iso: string | null | undefined): number | null {
   if (!iso) return null;
   const t = Date.parse(iso);
   return Number.isNaN(t) ? null : t;
+}
+
+/** Align the same workspace across agents that record cwd differently. */
+export function normalizeCwd(cwd: string): string {
+  let s = cwd.trim().replace(/\\/g, '/');
+  if (s.length >= 2 && s[1] === ':' && /[A-Za-z]/.test(s[0]!)) {
+    s = s[0]!.toLowerCase() + s.slice(1);
+  }
+  while (s.endsWith('/') && s.length > 1) {
+    s = s.slice(0, -1);
+  }
+  return s;
+}
+
+function projectIdentity(s: FlatSession): string {
+  return s.cwdNormalized ?? s.projectKey;
 }
 
 /** Collapse provider prefixes / paths into a short model id for grouping. */

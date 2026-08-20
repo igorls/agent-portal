@@ -1,0 +1,30 @@
+<main class="settings-shell">
+  <header class="page-header">
+    <div>
+      <h1>Settings</h1>
+      <p>Local models, search index, MCP, and launch preferences.</p>
+    </div>
+  </header>
+
+  <div class="settings-layout">
+    <nav class="settings-nav" aria-label="Settings sections">
+      <a routerLink="general" routerLinkActive="active">General</a>
+      <a routerLink="models" routerLinkActive="active">Models</a>
+      <a routerLink="search" routerLinkActive="active">Search</a>
+      <a routerLink="mcp" routerLinkActive="active">MCP</a>
+    </nav>
+
+    <div class="settings-body">
+      @if (store.loading()) {
+        <div class="panel loading">Loading settings…</div>
+      }
+      <!-- Outlet stays mounted so tabs paint as soon as settings.json is in. -->
+      <div [hidden]="store.loading()">
+        <router-outlet />
+      </div>
+      @if (store.error(); as message) {
+        <div class="error">{{ message }}</div>
+      }
+    </div>
+  </div>
+</main>

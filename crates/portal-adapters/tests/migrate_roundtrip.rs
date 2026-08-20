@@ -455,45 +455,11 @@ fn brief_mode_to_grok_build_writes_handoff_and_launch_command() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
-/// Claude Code → Grok Build native import via `grok import`.
-/// Requires a `grok` CLI on PATH (skipped otherwise).
+/// Claude Code → Grok Build native import.
+/// Uses `grok import` when the CLI still has it; otherwise synthesizes a
+/// Grok 1.0+ resumeable store (summary.json + chat_history.jsonl).
 #[test]
 fn claude_to_grok_native_import_via_cli() {
-    let grok_available = std::process::Command::new("grok")
-        .arg("version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-    if !grok_available {
-        eprintln!("skipping claude_to_grok_native_import_via_cli: grok CLI not available");
-        return;
-    }
-    // Grok 0.2.103+ dropped the `import` subcommand; skip until the new path lands.
-    // Probe via `grok help` — never run `grok import` itself (treated as a TUI prompt).
-    let import_available = std::process::Command::new("grok")
-        .arg("help")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| {
-            let text = format!(
-                "{}{}",
-                String::from_utf8_lossy(&o.stdout),
-                String::from_utf8_lossy(&o.stderr)
-            );
-            text.lines().any(|line| {
-                let trimmed = line.trim_start();
-                trimmed.starts_with("import ") || trimmed == "import"
-            })
-        })
-        .unwrap_or(false);
-    if !import_available {
-        eprintln!(
-            "skipping claude_to_grok_native_import_via_cli: `grok import` not available on this CLI"
-        );
-        return;
-    }
-
     let tmp = temp_dir("c2g-native");
     std::fs::remove_dir_all(&tmp).ok();
     let workspace = tmp.join("workspace");
@@ -549,9 +515,12 @@ fn claude_to_grok_native_import_via_cli() {
     let source = install(store, "2.1.206 (Claude Code)");
     let grok_home = tmp.join("grok-home");
     std::fs::create_dir_all(grok_home.join("sessions")).unwrap();
+    // Leave cli_path empty so this test always exercises store synthesis
+    // (the Grok 1.0+ path). `grok import` is covered only when a real CLI
+    // that still has the subcommand is on PATH and a caller sets cli_path.
     let target = Installation {
-        cli_path: Some("grok".into()),
-        version: Some("grok 0.2.93".into()),
+        cli_path: None,
+        version: Some("grok 1.0.5".into()),
         store_root: grok_home.join("sessions").display().to_string(),
     };
 

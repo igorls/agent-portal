@@ -14,10 +14,73 @@ export class BoardStore {
   /** true only before the very first data (cached or fresh) arrives */
   readonly coldLoading = signal(false);
 
+  /**
+   * Cross-feature selection bridge for global search → board jump.
+   * BoardPage reads these; search palette writes them.
+   */
+  readonly pendingProjectId = signal<string | null>(null);
+  readonly pendingHighlight = signal<{ agentId: string; nativeId: string } | null>(null);
+  readonly pendingPreview = signal<{
+    agentId: string;
+    nativeId: string;
+    storePath?: string;
+  } | null>(null);
+
+  /**
+   * Board's active project (for search "this project only").
+   * `id` is the board identity: cwdNormalized ?? project key.
+   */
+  readonly activeProject = signal<{
+    id: string;
+    label: string;
+    path: string | null;
+  } | null>(null);
+
+  setActiveProject(project: { id: string; label: string; path: string | null } | null): void {
+    this.activeProject.set(project);
+  }
+
   constructor() {
     void listen<void>('titles-updated', () => void this.reloadCached()).catch(() => {
       /* Browser-only tests do not expose Tauri events. */
     });
+  }
+
+  /** Navigate the board to a project and optionally open a session preview. */
+  requestJump(opts: {
+    projectId: string;
+    agentId: string;
+    nativeId: string;
+    storePath?: string;
+    openPreview?: boolean;
+  }): void {
+    this.pendingProjectId.set(opts.projectId);
+    this.pendingHighlight.set({ agentId: opts.agentId, nativeId: opts.nativeId });
+    if (opts.openPreview !== false) {
+      this.pendingPreview.set({
+        agentId: opts.agentId,
+        nativeId: opts.nativeId,
+        storePath: opts.storePath,
+      });
+    }
+  }
+
+  clearPendingProject(): void {
+    this.pendingProjectId.set(null);
+  }
+
+  clearPendingHighlight(): void {
+    this.pendingHighlight.set(null);
+  }
+
+  takePendingPreview(): {
+    agentId: string;
+    nativeId: string;
+    storePath?: string;
+  } | null {
+    const p = this.pendingPreview();
+    this.pendingPreview.set(null);
+    return p;
   }
 
   private async reloadCached(): Promise<void> {

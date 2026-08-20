@@ -4,6 +4,7 @@ import {
   buildUsageReport,
   chartTicks,
   formatBytes,
+  normalizeCwd,
   normalizeModel,
   type FlatSession,
 } from './usage.analytics';
@@ -76,6 +77,13 @@ describe('usage.analytics', () => {
     expect(normalizeModel('openai/gpt-4o')).toBe('gpt-4o');
     expect(normalizeModel('claude-sonnet-4-20250514')).toBe('claude-sonnet-4');
     expect(normalizeModel(null)).toBeNull();
+  });
+
+  it('normalizes Windows cwd spellings to one identity', () => {
+    expect(normalizeCwd('P:\\rioblocks\\bentokit')).toBe('p:/rioblocks/bentokit');
+    expect(normalizeCwd('P:/rioblocks/bentokit')).toBe('p:/rioblocks/bentokit');
+    expect(normalizeCwd('p:\\rioblocks\\bentokit\\')).toBe('p:/rioblocks/bentokit');
+    expect(normalizeCwd('/home/igorls/dev/x')).toBe('/home/igorls/dev/x');
   });
 
   it('formats bytes', () => {
@@ -159,6 +167,146 @@ describe('usage.analytics', () => {
     expect(chartTicks(47).at(-1)!).toBeGreaterThanOrEqual(47);
     expect(chartTicks(85)).toEqual([0, 20, 40, 60, 80, 100]);
     expect(chartTicks(85).at(-1)!).toBe(100);
+  });
+
+  it('collapses the same Windows project across path spellings', () => {
+    const now = Date.parse('2026-07-17T12:00:00Z');
+    const board: BoardSnapshot = {
+      generatedAt: new Date(now).toISOString(),
+      feasibility: [],
+      lanes: [
+        {
+          agent: {
+            id: 'claude-code',
+            displayName: 'claude-code',
+            capabilities: {
+              storeKind: 'jsonl_per_session',
+              read: 'full',
+              writeNative: 'full',
+              watch: true,
+              launchResume: true,
+              launchNew: true,
+              contextTokens: null,
+              writeConfidence: null,
+              versionRangeTested: '',
+              notes: [],
+            },
+            installation: null,
+          },
+          error: null,
+          projects: [
+            {
+              key: 'P--rioblocks-bentokit',
+              label: 'bentokit',
+              cwdNormalized: 'p:/rioblocks/bentokit',
+              sessions: [
+                {
+                  agentId: 'claude-code',
+                  nativeId: 'sess-win',
+                  projectKey: 'P--rioblocks-bentokit',
+                  title: null,
+                  cwd: 'P:\\rioblocks\\bentokit',
+                  gitBranch: null,
+                  model: 'claude-sonnet-4',
+                  createdAt: new Date(now).toISOString(),
+                  updatedAt: new Date(now).toISOString(),
+                  messageCount: 10,
+                  messageCountExact: true,
+                  sizeBytes: 1000,
+                  storePath: '/tmp/a',
+                  maybeLive: false,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          agent: {
+            id: 'grok-build',
+            displayName: 'grok-build',
+            capabilities: {
+              storeKind: 'jsonl_per_session',
+              read: 'full',
+              writeNative: 'full',
+              watch: true,
+              launchResume: true,
+              launchNew: true,
+              contextTokens: null,
+              writeConfidence: null,
+              versionRangeTested: '',
+              notes: [],
+            },
+            installation: null,
+          },
+          error: null,
+          projects: [
+            {
+              key: 'p:/rioblocks/bentokit',
+              label: 'bentokit',
+              cwdNormalized: 'p:/rioblocks/bentokit',
+              sessions: [
+                {
+                  agentId: 'grok-build',
+                  nativeId: 'sess-unixish',
+                  projectKey: 'p:/rioblocks/bentokit',
+                  title: null,
+                  cwd: 'p:/rioblocks/bentokit',
+                  gitBranch: null,
+                  model: 'grok-4',
+                  createdAt: new Date(now).toISOString(),
+                  updatedAt: new Date(now).toISOString(),
+                  messageCount: 4,
+                  messageCountExact: true,
+                  sizeBytes: 500,
+                  storePath: '/tmp/b',
+                  maybeLive: false,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const r = buildUsageReport(board, [], 'all', now);
+    expect(r.projects).toBe(1);
+    expect(r.byProject).toHaveLength(1);
+    expect(r.byProject[0].count).toBe(2);
+    expect(r.byProject[0].key).toBe('p:/rioblocks/bentokit');
+    expect(r.byProject[0].label).toBe('bentokit');
+  });
+
+  it('collapses mixed session cwd spellings when project cwdNormalized is missing', () => {
+    const now = Date.parse('2026-07-17T12:00:00Z');
+    const board = boardWith([
+      {
+        agentId: 'claude-code',
+        nativeId: 'a',
+        cwd: 'P:\\rioblocks\\bentokit',
+        updatedAtMs: now,
+        messageCount: 3,
+        sizeBytes: 300,
+      },
+      {
+        agentId: 'grok-build',
+        nativeId: 'b',
+        cwd: 'P:/rioblocks/bentokit/',
+        updatedAtMs: now,
+        messageCount: 2,
+        sizeBytes: 200,
+      },
+    ]);
+    for (const lane of board.lanes) {
+      for (const project of lane.projects) {
+        project.cwdNormalized = null;
+      }
+    }
+
+    const r = buildUsageReport(board, [], 'all', now);
+    expect(r.projects).toBe(1);
+    expect(r.byProject).toHaveLength(1);
+    expect(r.byProject[0].count).toBe(2);
+    expect(r.byProject[0].key).toBe('p:/rioblocks/bentokit');
   });
 
   it('timeline points carry full labels', () => {

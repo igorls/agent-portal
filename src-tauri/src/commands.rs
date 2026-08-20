@@ -15,7 +15,9 @@ use portal_core::migration::ollama::{self, OllamaStatus};
 use portal_core::migration::types::{
     CommandSpec, DryRunReport, MigrationKind, MigrationResult, UndoReport,
 };
+use portal_core::search::{self, SearchIndexStatus, SearchQuery, SearchResponse};
 use portal_core::settings::AppSettings;
+use serde::Serialize;
 
 use crate::state::AppState;
 
@@ -47,7 +49,13 @@ pub async fn get_cached_board(
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<Option<BoardSnapshot>, PortalError> {
     let s = state.inner().clone();
-    run_blocking(move || Ok(s.index.cached_board())).await
+    run_blocking(move || {
+        if let Some(hot) = s.hot_board() {
+            return Ok(Some((*hot).clone()));
+        }
+        Ok(s.index.cached_board())
+    })
+    .await
 }
 
 /// Full scan of every store: rebuilds the board, refreshes the install cache,
@@ -71,9 +79,131 @@ pub async fn refresh_board(
         if let Err(e) = s.index.store_board(&board) {
             eprintln!("failed to cache board: {e}");
         }
+        s.publish_board(board.clone());
         Ok(board)
     })
     .await
+}
+
+/// Global session search: metadata (hot board) + FTS content when indexed.
+#[tauri::command]
+pub async fn search_sessions(
+    state: tauri::State<'_, Arc<AppState>>,
+    query: SearchQuery,
+) -> Result<SearchResponse, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let board = s.hot_board().ok_or_else(|| {
+            PortalError::Other(
+                "no board loaded yet — open the board or wait for the first refresh".into(),
+            )
+        })?;
+        let mut q = query;
+        // Prefer semantic when caller left the default and WormDB is available.
+        if !q.include_semantic {
+            // keep false if explicit; default from serde is false — enable when sidecar up
+        }
+        // Enable semantic by default for hybrid search when wormdb is reachable.
+        if s.wormdb.as_ref().is_some() {
+            q.include_semantic = true;
+        }
+        let port = s
+            .wormdb
+            .as_ref()
+            .and_then(|w| w.port())
+            .or_else(|| s.ensure_wormdb().ok());
+        let cfg = s.settings.load();
+        let embedder = portal_core::search::embedder_from_settings(&cfg);
+        Ok(search::search_sessions_full(
+            &board,
+            &q,
+            s.search.as_ref(),
+            port,
+            Some(embedder.as_ref()),
+        ))
+    })
+    .await
+}
+
+/// Content index status for the search palette footer / Settings.
+/// Fast path: local SQLite only. Does **not** spawn WormDB (that blocked Settings).
+#[tauri::command]
+pub async fn search_index_status(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<SearchIndexStatus, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let docs = s
+            .search
+            .as_ref()
+            .and_then(|st| st.count_docs().ok())
+            .unwrap_or(0);
+        let board_sessions = s
+            .hot_board()
+            .map(|b| {
+                b.lanes
+                    .iter()
+                    .flat_map(|l| l.projects.iter())
+                    .map(|p| p.sessions.len() as u32)
+                    .sum()
+            })
+            .unwrap_or(0);
+        // Prefer local semantic_state count (instant). Live WormDB stats are optional.
+        let mut semantic_chunks = s
+            .search
+            .as_ref()
+            .and_then(|st| st.count_semantic_sessions().ok())
+            .unwrap_or(0);
+        let mut hnsw_live = false;
+        let semantic_enabled = s
+            .wormdb
+            .as_ref()
+            .map(|sc| sc.binary_path().exists())
+            .unwrap_or(false);
+        // Only probe if already running — never ensure_running() here.
+        if let Some(port) = s.wormdb.as_ref().and_then(|w| w.port()) {
+            if let Ok(client) = portal_core::search::MemClient::connect(port) {
+                if let Ok(st) = client.stats() {
+                    semantic_chunks = st.vectors as u32;
+                    hnsw_live = st
+                        .hnsw
+                        .as_ref()
+                        .and_then(|h| h.get("live").or_else(|| h.get("nodes")))
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0)
+                        > 0;
+                }
+            }
+        }
+        let prog = s.semantic_progress();
+        Ok(SearchIndexStatus {
+            content_docs: docs,
+            board_sessions,
+            content_enabled: s.search.is_some(),
+            semantic_enabled,
+            semantic_chunks,
+            hnsw_live,
+            semantic_active: prog.active,
+            semantic_current: prog.current,
+            semantic_pending: prog.sessions_pending,
+            semantic_error: prog.last_error,
+            semantic_embedder: prog.embedder_id,
+            semantic_paused: prog.paused || s.semantic_paused(),
+            semantic_eta_secs: prog.eta_secs,
+            semantic_rate_per_min: prog.rate_sessions_per_min,
+            semantic_done_window: prog.sessions_done_window,
+        })
+    })
+    .await
+}
+
+/// Dev/ops: ensure WormDB sidecar is up (loopback). Semantic indexing follows later.
+#[tauri::command]
+pub async fn ensure_wormdb_sidecar(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<u16, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || s.ensure_wormdb()).await
 }
 
 #[tauri::command]
@@ -119,8 +249,80 @@ pub async fn save_settings(
 ) -> Result<AppSettings, PortalError> {
     let s = state.inner().clone();
     run_blocking(move || {
+        let prev = s.settings.load();
+        let embedder_changed = prev.embedder_id() != settings.embedder_id()
+            || prev.embed_provider != settings.embed_provider
+            || prev.ollama_embed_model != settings.ollama_embed_model;
         s.settings.save(&settings)?;
+        // Restart HTTP MCP if enable/port/token changed.
+        s.apply_mcp_http();
+        if embedder_changed {
+            let cfg = s.settings.load();
+            if let Err(e) = crate::semantic_index::reset_semantic_index(&s, &cfg) {
+                eprintln!("semantic reindex after embedder change: {e}");
+            }
+        }
         Ok(s.settings.load())
+    })
+    .await
+}
+
+/// Force-clear WormDB semantic corpus + local semantic_state (reindex will rebuild).
+#[tauri::command]
+pub async fn reset_semantic_index(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<String, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let cfg = s.settings.load();
+        crate::semantic_index::reset_semantic_index(&s, &cfg).map_err(PortalError::Other)?;
+        Ok("Semantic index cleared; background worker will reindex.".into())
+    })
+    .await
+}
+
+/// Pause (`true`) or resume (`false`) background semantic embedding.
+/// Search still works over whatever is already indexed.
+#[tauri::command]
+pub async fn set_semantic_indexing_paused(
+    state: tauri::State<'_, Arc<AppState>>,
+    paused: bool,
+) -> Result<bool, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        s.set_semantic_paused(paused);
+        Ok(s.semantic_paused())
+    })
+    .await
+}
+
+/// Live HTTP MCP bind status (loopback).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpHttpStatus {
+    pub enabled: bool,
+    pub running: bool,
+    pub port: Option<u16>,
+    pub url: Option<String>,
+    pub token_required: bool,
+}
+
+#[tauri::command]
+pub async fn mcp_http_status(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<McpHttpStatus, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let cfg = s.settings.load();
+        let rt = s.mcp_http_runtime();
+        let url = rt.port.map(|p| format!("http://127.0.0.1:{p}/mcp"));
+        Ok(McpHttpStatus {
+            enabled: cfg.mcp_http_enabled,
+            running: rt.running,
+            port: rt.port,
+            url,
+            token_required: rt.token_required,
+        })
     })
     .await
 }

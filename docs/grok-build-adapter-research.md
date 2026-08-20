@@ -18,8 +18,9 @@ Grok Build is a viable adapter. It has all the pieces Agent Portal needs:
 The first implementation should be **read and resume capable**, then add writes
 behind an experimental feature flag. xAI documents importing *into* Grok from
 Claude Code and exporting to Markdown, but does not document a stable, general
-JSON session-import schema. Therefore, do not synthesize Grok session files as
-the normal migration path until they are validated against the installed binary.
+JSON session-import schema. As of Grok 1.0.5 the `import` subcommand is gone;
+a `summary.json` + `chat_history.jsonl` store with `chat_format_version = 1`
+was validated to resume via `grok --resume` and is the native fallback.
 
 ## Installation and detection
 
@@ -203,16 +204,23 @@ Incoming migrations can target Grok Build via the portal handoff brief:
 ### Native import from Claude Code (landed)
 
 - `write_native = Partial` with `accepts_native_from("claude-code")` only
-- `write_session` shells out to `grok import --json <claude.jsonl>` with
-  `GROK_HOME` pointed at the parent of the configured sessions root
+- `write_session` prefers `grok import --json <claude.jsonl>` when that
+  subcommand still exists (`GROK_HOME` = parent of the configured sessions
+  root). Grok 0.2.103+ removed `import`; Grok 1.0.5 was validated to resume a
+  synthesized `summary.json` (`chat_format_version = 1`) plus
+  `chat_history.jsonl`, so that is the fallback native path
+- `grok --resume <claude-uuid>` does **not** load `~/.claude` transcripts
+  (looks in the Grok store, then remote, and 404s). Portal must materialize
+  a Grok session directory
 - Feasibility matrix is source-aware: only **Claude Code → Grok** gets
   `native: true`; other origins get brief only
-- Windows workaround: Grok's importer currently accepts only CWD values that
-  start with `/`. Portal rewrites `C:\…` → `/C:/…` for the import copy, then
-  re-homes the session directory under the real percent-encoded Windows path
-  and patches `summary.json` `info.cwd`
+- Windows workaround for the **CLI importer only**: it accepts only CWD
+  values that start with `/`. Portal rewrites `C:\…` → `/C:/…` for the import
+  copy, then re-homes the session directory under the real percent-encoded
+  Windows path and patches `summary.json` `info.cwd`. Synthesis writes the
+  real Windows cwd and does not need this rewrite
 - Read-back verify uses full content compare when possible; on Partial writers
-  falls back to text-stream `Equivalent` (tool names are remapped by import)
+  falls back to text-stream `Equivalent` (the CLI importer remaps tool names)
 
 ### Still follow-up
 

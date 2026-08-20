@@ -3,11 +3,19 @@ name = "portal-tauri"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# Required once [[bin]] portal-mcp exists — otherwise `cargo run` / tauri dev
+# cannot choose between portal-tauri and portal-mcp.
+default-run = "portal-tauri"
 
 # Distinct lib name avoids the Windows .pdb filename collision with the bin target.
 [lib]
 name = "portal_tauri_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+# Headless MCP server (stdio). Always console-subsystem for JSON-RPC framing.
+[[bin]]
+name = "portal-mcp"
+path = "src/bin/portal-mcp.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -19,3 +27,4 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 portal-core = { path = "../crates/portal-core" }
 portal-adapters = { path = "../crates/portal-adapters" }
+tauri-plugin-single-instance = "2"

@@ -1,24 +1,27 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, inject, signal, viewChild } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { PortalCommands } from './core/ipc/commands';
 import { TauriService } from './core/ipc/tauri.service';
 import { PeekPanel } from './features/peek/peek-panel';
+import { SearchPalette } from './features/search/search-palette';
 import type { Health } from './core/ipc/gen/Health';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, PeekPanel],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, PeekPanel, SearchPalette],
   templateUrl: './app.html',
   styleUrl: './app.scss'
 })
 export class App {
   private readonly commands = inject(PortalCommands);
   protected readonly tauri = inject(TauriService);
+  private readonly searchPalette = viewChild(SearchPalette);
 
   /** the peek popup runs the same app in a window labelled "peek" */
   protected readonly isPeek = this.tauri.label === 'peek';
   /** WKWebView identifies macOS as Macintosh on both Intel and Apple Silicon. */
   protected readonly isMac = navigator.userAgent.includes('Macintosh');
+  protected readonly searchHotkey = this.isMac ? '⌘K' : 'Ctrl+K';
 
   protected readonly health = signal<Health | null>(null);
   protected readonly ipcError = signal<string | null>(null);
@@ -29,5 +32,10 @@ export class App {
       .health()
       .then((h) => this.health.set(h))
       .catch((e) => this.ipcError.set(String(e)));
+  }
+
+  protected openSearch(ev: Event): void {
+    ev.preventDefault();
+    this.searchPalette()?.show();
   }
 }

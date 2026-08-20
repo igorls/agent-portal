@@ -13,6 +13,30 @@ export const routes: Routes = [
   {
     path: 'settings',
     title: 'Settings · Agent Portal',
-    loadComponent: () => import('./features/settings/settings-page').then((m) => m.SettingsPage),
+    loadComponent: () =>
+      import('./features/settings/settings-shell').then((m) => m.SettingsShell),
+    children: [
+      { path: '', pathMatch: 'full', redirectTo: 'general' },
+      {
+        path: 'general',
+        loadComponent: () =>
+          import('./features/settings/pages/general-settings').then((m) => m.GeneralSettings),
+      },
+      {
+        path: 'models',
+        loadComponent: () =>
+          import('./features/settings/pages/models-settings').then((m) => m.ModelsSettings),
+      },
+      {
+        path: 'search',
+        loadComponent: () =>
+          import('./features/settings/pages/search-settings').then((m) => m.SearchSettings),
+      },
+      {
+        path: 'mcp',
+        loadComponent: () =>
+          import('./features/settings/pages/mcp-settings').then((m) => m.McpSettings),
+      },
+    ],
   },
 ];

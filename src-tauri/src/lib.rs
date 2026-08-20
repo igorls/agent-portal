@@ -1,24 +1,52 @@
 mod commands;
+pub mod mcp;
 mod naming;
-mod state;
+pub mod search_index;
+pub mod semantic_index;
+pub mod state;
 mod tray;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use state::AppState;
 use tauri::{Manager, WindowEvent};
 
+/// Dirs where the shipped WormDB binary may live (never PATH).
+fn wormdb_search_dirs(app: &tauri::App) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    // Packaged / tauri-dev resource root (externalBin lands next to exe or in Resources).
+    if let Ok(resource) = app.path().resource_dir() {
+        dirs.push(resource);
+    }
+    // Vendored binaries for `cargo run` / `tauri dev` (triple-suffixed + plain).
+    dirs.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("binaries"));
+    dirs
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must be first so a second launch exits before setup runs workers / WormDB / MCP.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Focus the existing instance instead of starting another.
+            tray::show_main(app);
+        }))
         .setup(|app| {
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| std::env::temp_dir().join("agent-portal"));
-            let state = Arc::new(AppState::new(data_dir));
+            let state = Arc::new(AppState::with_wormdb_search_dirs(
+                data_dir,
+                &wormdb_search_dirs(app),
+            ));
             app.manage(state.clone());
-            naming::start(state, app.handle().clone());
+            naming::start(state.clone(), app.handle().clone());
+            search_index::start(state.clone());
+            semantic_index::start(state.clone());
+            // In-process HTTP MCP (loopback) — primary surface for agents.
+            state.apply_mcp_http();
             tray::init(app.handle())?;
 
             // Closing the main window hides it to the tray instead of quitting;
@@ -64,6 +92,12 @@ pub fn run() {
             commands::launch_command,
             commands::list_activity,
             commands::naming_status,
+            commands::search_sessions,
+            commands::search_index_status,
+            commands::ensure_wormdb_sidecar,
+            commands::mcp_http_status,
+            commands::reset_semantic_index,
+            commands::set_semantic_indexing_paused,
             commands::show_main_window
         ])
         .run(tauri::generate_context!())

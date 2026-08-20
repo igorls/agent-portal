@@ -1,0 +1,126 @@
+@if (open()) {
+  <div class="palette-backdrop" (click)="close()" role="presentation"></div>
+  <div
+    class="palette"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Search sessions"
+    (click)="$event.stopPropagation()"
+  >
+    <div class="palette-input-row">
+      <svg class="search-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">
+        <circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+        <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+      </svg>
+      <input
+        #searchInput
+        id="portal-search-input"
+        class="palette-input"
+        type="search"
+        placeholder="Search sessions across all agents…"
+        [value]="q()"
+        (input)="onInput($any($event.target).value)"
+        autocomplete="off"
+        spellcheck="false"
+        autofocus
+      />
+      <kbd class="hint">Esc</kbd>
+    </div>
+
+    @if (boardProject(); as proj) {
+      <div class="scope-bar" role="group" aria-label="Search scope">
+        <button
+          type="button"
+          class="scope-chip"
+          [class.active]="scopeToProject()"
+          (click)="setProjectScope(true)"
+          [attr.aria-pressed]="scopeToProject()"
+          title="Search only the project selected on the board"
+        >
+          <span class="scope-label">This project</span>
+          <span class="scope-name">{{ proj.label }}</span>
+        </button>
+        <button
+          type="button"
+          class="scope-chip"
+          [class.active]="!scopeToProject()"
+          (click)="setProjectScope(false)"
+          [attr.aria-pressed]="!scopeToProject()"
+          title="Search sessions across every project"
+        >
+          <span class="scope-label">All projects</span>
+        </button>
+      </div>
+    }
+
+    @if (error(); as err) {
+      <div class="palette-error">{{ err }}</div>
+    }
+
+    <ul class="palette-results" role="listbox">
+      @for (hit of hits(); track hit.agentId + hit.nativeId; let i = $index) {
+        <li
+          role="option"
+          [attr.aria-selected]="i === activeIndex()"
+          class="hit"
+          [class.active]="i === activeIndex()"
+          (click)="select(hit)"
+          (mouseenter)="activeIndex.set(i)"
+        >
+          <span class="agent-dot" [style.background]="accent(hit.agentId)"></span>
+          <div class="hit-body">
+            <div class="hit-title-row">
+              <div class="hit-title">
+                {{ hit.title || hit.nativeId }}
+                @if (hit.maybeLive) {
+                  <span class="live">live</span>
+                }
+              </div>
+              @if (hit.updatedAt) {
+                <time class="hit-when mono" [attr.title]="formatWhenAbsolute(hit.updatedAt)">
+                  {{ formatWhen(hit.updatedAt) }}
+                </time>
+              }
+            </div>
+            <div class="hit-meta mono">
+              <span>{{ hit.projectLabel }}</span>
+              <span class="sep">·</span>
+              <span>{{ hit.agentId }}</span>
+              <span class="sep">·</span>
+              <span class="kind">{{ kindLabel(hit.matchKind) }}</span>
+            </div>
+            @if (hit.snippet) {
+              <div class="hit-snippet">{{ hit.snippet }}</div>
+            }
+          </div>
+        </li>
+      } @empty {
+        @if (!loading() && !error()) {
+          <li class="empty">
+            @if (q().trim()) {
+              No sessions match
+            } @else {
+              No recent sessions yet
+            }
+          </li>
+        }
+      }
+    </ul>
+
+    <div class="palette-footer mono">
+      <span>↑↓ navigate · Enter open · Ctrl/⌘K toggle</span>
+      <span>
+        @if (indexHint(); as hint) {
+          {{ hint }}
+          <span class="sep">·</span>
+        }
+        @if (tookMs() != null) {
+          {{ tookMs() }}ms · {{ hits().length }} hits
+        }
+        @if (loading()) {
+          searching…
+        }
+      </span>
+    </div>
+  </div>
+}

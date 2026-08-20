@@ -1,0 +1,176 @@
+<div class="stack">
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <div class="section-title">Ollama connection</div>
+        <p>Models and prompts stay on this machine.</p>
+      </div>
+      @if (store.ollama(); as status) {
+        <div class="probe" [class.ok]="status.available" [class.bad]="!status.available">
+          <span class="dot"></span>
+          {{ status.available ? 'Connected' : 'Offline' }}
+        </div>
+      }
+    </div>
+    <div class="host-row">
+      <label>
+        <span>Host</span>
+        <input
+          [value]="store.settings().ollamaHost"
+          (input)="onHostInput($any($event.target).value)"
+          placeholder="http://localhost:11434"
+        />
+      </label>
+      <button class="secondary refresh" type="button" [disabled]="store.refreshing()" (click)="refresh()">
+        {{ store.refreshing() ? 'Checking…' : 'Refresh models' }}
+      </button>
+    </div>
+  </section>
+
+  @if (store.ollama(); as status) {
+    <section class="panel hardware-panel">
+      <div>
+        <div class="section-title">This machine</div>
+        <div class="hardware-summary">
+          <strong>{{ status.hardware.platform }} · {{ status.hardware.architecture }}</strong>
+          <span>{{ formatBytes(status.hardware.totalMemory) }} memory</span>
+          <span>{{ status.hardware.logicalCpus }} logical CPUs</span>
+        </div>
+      </div>
+      <p>Recommendations prioritize low latency for short session titles.</p>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <div class="section-title">Naming model</div>
+          <h2>Choose an installed model</h2>
+        </div>
+        <span class="model-count">{{ status.models.length }} installed</span>
+      </div>
+
+      @if (status.modelDetails.length) {
+        <div class="model-grid">
+          @for (installed of status.modelDetails; track installed.name) {
+            <button
+              type="button"
+              class="model-option"
+              [class.selected]="store.settings().ollamaNamingModel === installed.name"
+              (click)="selectNaming(installed.name)"
+            >
+              <span class="radio"></span>
+              <span class="model-copy">
+                <strong class="mono">{{ installed.name }}</strong>
+                <small>
+                  {{ installed.parameterSize || 'Local model' }}
+                  @if (installed.quantizationLevel) {
+                    · {{ installed.quantizationLevel }}
+                  }
+                  · {{ formatBytes(installed.size) }}
+                </small>
+              </span>
+              @if (store.settings().ollamaNamingModel === installed.name) {
+                <span class="active-tag">Active</span>
+              }
+            </button>
+          }
+        </div>
+      } @else {
+        <div class="empty-models">
+          <strong>No local models found</strong>
+          <span>Pull a recommendation below to get started.</span>
+        </div>
+      }
+
+      <label class="custom-model">
+        <span>Or enter any Ollama model name</span>
+        <input
+          [value]="store.settings().ollamaNamingModel"
+          (input)="onNamingInput($any($event.target).value)"
+          placeholder="qwen3.5:0.8b"
+        />
+      </label>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <div class="section-title">Fast recommendations</div>
+          <h2>Optimized for session naming</h2>
+        </div>
+      </div>
+      <div class="recommendation-list">
+        @for (choice of status.recommendations; track choice.name) {
+          <article class="recommendation" [class.primary]="choice.recommended">
+            <div class="recommendation-main">
+              <div class="recommendation-title">
+                <strong class="mono">{{ choice.name }}</strong>
+                @if (choice.recommended) {
+                  <span class="recommended-tag">Recommended</span>
+                }
+                <span class="fit" [class]="'fit ' + choice.fit">{{ choice.fit }} fit</span>
+              </div>
+              <p>{{ choice.description }}</p>
+              <small
+                >{{ choice.label }} · {{ formatBytes(choice.downloadSize) }} download · ~{{
+                  formatBytes(choice.estimatedMemory)
+                }}
+                memory</small
+              >
+            </div>
+            @if (choice.installed) {
+              <button type="button" class="secondary" (click)="selectNaming(choice.name)">
+                {{ store.settings().ollamaNamingModel === choice.name ? 'Selected' : 'Use model' }}
+              </button>
+            } @else {
+              <button
+                type="button"
+                class="pull"
+                [disabled]="store.pulling() !== null || !status.available"
+                (click)="pull(choice)"
+              >
+                {{ store.pulling() === choice.name ? 'Pulling…' : 'Pull model' }}
+              </button>
+            }
+          </article>
+        }
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading">
+        <div>
+          <div class="section-title">Handoff & compaction model</div>
+          <h2>Choose quality over raw speed</h2>
+        </div>
+      </div>
+      <p class="section-copy">
+        This model rewrites migration handoffs and compacted session history. A larger model is useful
+        here because these jobs run only when requested.
+      </p>
+      <label>
+        <span>Handoff model</span>
+        <input
+          [value]="store.settings().ollamaModel"
+          (input)="onHandoffInput($any($event.target).value)"
+          list="installed-ollama-models"
+          placeholder="gemma4:12b"
+        />
+        <datalist id="installed-ollama-models">
+          @for (installed of status.modelDetails; track installed.name) {
+            <option [value]="installed.name"></option>
+          }
+        </datalist>
+      </label>
+    </section>
+  }
+
+  <footer class="save-bar">
+    @if (store.saved()) {
+      <span class="saved">Saved and connection checked</span>
+    }
+    <button type="button" [disabled]="store.saving()" (click)="save()">
+      {{ store.saving() ? 'Saving…' : 'Save settings' }}
+    </button>
+  </footer>
+</div>

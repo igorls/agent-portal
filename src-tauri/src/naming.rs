@@ -160,6 +160,7 @@ fn run_pass(state: &AppState, app: &tauri::AppHandle) -> u32 {
     let mut refreshed = state.registry.board(&state.env);
     let _ = state.index.apply_generated_titles(&mut refreshed);
     let _ = state.index.store_board(&refreshed);
+    state.publish_board(refreshed.clone());
 
     // Recount recent-window sessions still needing a title, off the freshly
     // stored board, to drive both the cadence and the UI badge.

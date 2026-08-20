@@ -1,8 +1,8 @@
-<aside class="preview">
+<aside class="preview" role="dialog" aria-label="Session transcript">
   <header class="preview-header">
     <div class="title-row">
       <h3>{{ session().title ?? session().identity.nativeId.slice(0, 8) }}</h3>
-      <button class="close" (click)="closed.emit()" title="close">✕</button>
+      <button class="close" type="button" (click)="closed.emit()" title="Close (Esc)">✕</button>
     </div>
     <div class="facts">
       <span class="chip agent">{{ session().identity.agentId }}</span>
@@ -11,7 +11,7 @@
       @if (session().workspace.gitBranch; as branch) {
         <span class="fact">⎇ {{ branch }}</span>
       }
-      <span class="fact">{{ session().timeline.length }} turns</span>
+      <span class="fact">{{ session().timeline.length.toLocaleString() }} turns</span>
       @if (session().usage.known) {
         <span class="fact"
           >{{ session().usage.inputTokens.toLocaleString() }} in /
@@ -26,66 +26,227 @@
         }
       </div>
     }
-    <label class="meta-toggle">
-      <input type="checkbox" [checked]="showMeta()" (change)="showMeta.set(!showMeta())" />
-      show meta records
-    </label>
+
+    <div class="find-row">
+      <label class="find" role="search">
+        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+          <circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.4" />
+          <path d="M10 10l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+        <input
+          #searchInput
+          type="search"
+          placeholder="Find in this session"
+          [value]="query()"
+          (input)="onQuery($any($event.target).value)"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Find in this session"
+        />
+      </label>
+      @if (query().trim().length >= minQuery) {
+        <span class="find-count mono">
+          @if (matches().length) {
+            {{ matchIndex() + 1 }}/{{ matches().length }}
+          } @else {
+            no matches
+          }
+        </span>
+        <button type="button" class="icon-btn" (click)="prevMatch()" [disabled]="!matches().length" title="Previous match (Shift+Enter)">↑</button>
+        <button type="button" class="icon-btn" (click)="nextMatch()" [disabled]="!matches().length" title="Next match (Enter)">↓</button>
+      }
+      <div class="mode-pills" role="radiogroup" aria-label="Transcript view">
+        <button type="button" [class.on]="mode() === 'chat'" (click)="setMode('chat')">Chat</button>
+        <button type="button" [class.on]="mode() === 'work'" (click)="setMode('work')">Work</button>
+        <button type="button" [class.on]="mode() === 'full'" (click)="setMode('full')">Tools</button>
+      </div>
+      <label class="meta-toggle">
+        <input type="checkbox" [checked]="showMeta()" (change)="showMeta.set(!showMeta())" />
+        meta
+      </label>
+    </div>
+
+    <div class="nav-row">
+      <button type="button" class="nav-link" (click)="jumpStart()" [disabled]="windowStart() === 0">
+        Start
+      </button>
+      <span class="window-label mono">
+        {{ earlierCount() === 0 && laterCount() === 0
+          ? 'all ' + filteredTurns().length.toLocaleString() + ' turns'
+          : (windowStart() + 1).toLocaleString() + '–' + windowEnd().toLocaleString() + ' of ' + filteredTurns().length.toLocaleString() }}
+      </span>
+      <button type="button" class="nav-link" (click)="jumpLatest()" [disabled]="laterCount() === 0">
+        Latest
+      </button>
+    </div>
+    @if (activeMatch(); as hit) {
+      <div class="hit-snippet mono" [title]="hit.snippet">{{ hit.snippet }}</div>
+    }
   </header>
 
-  <div class="turns">
-    @for (turn of visibleTurns(); track turn.id) {
-      <div class="turn" [class]="'role-' + turn.role" [class.meta]="turn.isMeta">
-        <div class="turn-head">
-          <span class="role">{{ roleLabel(turn) }}</span>
-          @if (turn.model) {
-            <span class="model">{{ turn.model }}</span>
+  <div class="body">
+    <div #scroller class="turns" tabindex="0">
+      @if (earlierCount() > 0) {
+        <button type="button" class="page-btn" (click)="loadEarlier()">
+          ↑ {{ earlierCount().toLocaleString() }} earlier turns
+        </button>
+      }
+      @for (group of visibleGroups(); track group.id) {
+        <div class="burst" [class.open]="isGroupOpen(group)">
+          @if (hasHiddenWork(group)) {
+            <button
+              type="button"
+              class="work-bar"
+              (click)="toggleGroup(group.id)"
+              [attr.aria-expanded]="isGroupOpen(group)"
+            >
+              {{ workBarLabel(group) }}
+            </button>
           }
-          @if (turn.timestamp) {
-            <span class="ts">{{ turn.timestamp | date: 'MMM d HH:mm:ss' }}</span>
+          @for (row of rowsForGroup(group); track row.turn.id) {
+            @let turn = row.turn;
+            @let open = isGroupOpen(group);
+            <div
+              class="turn"
+              [class]="'role-' + (row.continuation ? 'assistant' : row.displayRole)"
+              [class.meta]="turn.isMeta"
+              [class.hit]="activeMatch()?.turnId === turn.id"
+              [class.continuation]="row.continuation"
+              [attr.data-turn-id]="turn.id"
+            >
+              @if (!row.continuation) {
+                <div class="turn-head">
+                  <span class="idx mono">{{ absoluteIndex(row.localIndex) }}</span>
+                  <span class="role">{{ roleLabel(row.displayRole) }}</span>
+                  @if (turn.model) {
+                    <span class="model">{{ turn.model }}</span>
+                  }
+                  @if (turn.timestamp) {
+                    <span class="ts">{{ turn.timestamp | date: 'MMM d HH:mm:ss' }}</span>
+                  }
+                </div>
+              }
+              @for (block of turn.blocks; track $index; let bi = $index) {
+                @if (showBlock(block, open)) {
+                  @switch (block.kind) {
+                    @case ('text') {
+                      <div class="b-text">
+                        @for (seg of segs(displayText(block.text, blockKey(turn, bi))); track $index) {
+                          @if (seg.hit) {
+                            <mark [class.current]="activeMatch()?.turnId === turn.id">{{ seg.text }}</mark>
+                          } @else {
+                            <span>{{ seg.text }}</span>
+                          }
+                        }
+                        @if (block.text.length > foldAt && !isTextOpen(blockKey(turn, bi))) {
+                          <button type="button" class="more" (click)="toggleText(blockKey(turn, bi))">
+                            show rest · {{ (block.text.length - foldAt).toLocaleString() }} chars
+                          </button>
+                        }
+                      </div>
+                    }
+                    @case ('thinking') {
+                      <div class="fold-block">
+                        <button
+                          type="button"
+                          class="fold"
+                          (click)="toggleExpanded(blockKey(turn, bi))"
+                          [attr.aria-expanded]="isExpanded(blockKey(turn, bi))"
+                        >
+                          thinking{{ block.encrypted ? ' 🔒 encrypted' : '' }}
+                        </button>
+                        @if (isExpanded(blockKey(turn, bi))) {
+                          <pre>{{ block.text || '(content unavailable)' }}</pre>
+                        }
+                      </div>
+                    }
+                    @case ('tool_call') {
+                      <div class="fold-block">
+                        <button
+                          type="button"
+                          class="fold"
+                          (click)="toggleExpanded(blockKey(turn, bi))"
+                          [attr.aria-expanded]="isExpanded(blockKey(turn, bi))"
+                        >
+                          ⚙ {{ toolSummary(block) }}
+                        </button>
+                        @if (isExpanded(blockKey(turn, bi))) {
+                          <pre>{{ previewJson(block) }}</pre>
+                        }
+                      </div>
+                    }
+                    @case ('tool_result') {
+                      <div class="fold-block" [class.error]="block.is_error">
+                        <button
+                          type="button"
+                          class="fold"
+                          (click)="toggleExpanded(blockKey(turn, bi))"
+                          [attr.aria-expanded]="isExpanded(blockKey(turn, bi))"
+                        >
+                          ↳ {{ resultSummary(block) }}
+                        </button>
+                        @if (isExpanded(blockKey(turn, bi))) {
+                          <pre>{{ previewJson(block) }}</pre>
+                        }
+                      </div>
+                    }
+                    @case ('compaction') {
+                      <div class="b-compaction">— {{ block.summary }} —</div>
+                    }
+                    @case ('meta') {
+                      @if (showMeta()) {
+                        <div class="fold-block">
+                          <button
+                            type="button"
+                            class="fold"
+                            (click)="toggleExpanded(blockKey(turn, bi))"
+                            [attr.aria-expanded]="isExpanded(blockKey(turn, bi))"
+                          >
+                            {{ block.source_kind }}
+                          </button>
+                          @if (isExpanded(blockKey(turn, bi))) {
+                            <pre>{{ previewJson(block) }}</pre>
+                          }
+                        </div>
+                      }
+                    }
+                  }
+                }
+              }
+            </div>
           }
         </div>
-        @for (block of turn.blocks; track $index) {
-          @switch (block.kind) {
-            @case ('text') {
-              <div class="b-text">{{ asAny(block).text }}</div>
-            }
-            @case ('thinking') {
-              <details class="b-thinking">
-                <summary>thinking{{ asAny(block).encrypted ? ' 🔒 encrypted' : '' }}</summary>
-                <pre>{{ asAny(block).text || '(content unavailable)' }}</pre>
-              </details>
-            }
-            @case ('tool_call') {
-              <details class="b-tool">
-                <summary>⚙ {{ asAny(block).name }}</summary>
-                <pre>{{ asAny(block).arguments | json }}</pre>
-              </details>
-            }
-            @case ('tool_result') {
-              <details class="b-result" [class.error]="asAny(block).is_error">
-                <summary>↳ result{{ asAny(block).is_error ? ' (error)' : '' }}</summary>
-                <pre>{{ asAny(block).output | json }}</pre>
-              </details>
-            }
-            @case ('compaction') {
-              <div class="b-compaction">— {{ asAny(block).summary }} —</div>
-            }
-            @case ('meta') {
-              @if (showMeta()) {
-                <details class="b-meta">
-                  <summary>{{ asAny(block).source_kind }}</summary>
-                  <pre>{{ asAny(block).raw | json }}</pre>
-                </details>
-              }
-            }
-          }
-        }
-      </div>
-    }
-    @if (hiddenCount() > 0) {
-      <button class="show-all" (click)="showAll.set(true)">
-        show {{ hiddenCount() }} more turns
-      </button>
-    }
+      }
+      @if (laterCount() > 0) {
+        <button type="button" class="page-btn" (click)="loadLater()">
+          ↓ {{ laterCount().toLocaleString() }} later turns
+        </button>
+      }
+    </div>
+
+    <div
+      class="rail"
+      role="slider"
+      aria-label="Jump in transcript"
+      [attr.aria-valuemin]="1"
+      [attr.aria-valuemax]="filteredTurns().length"
+      [attr.aria-valuenow]="windowStart() + 1"
+      (click)="onRailClick($event)"
+    >
+      <div
+        class="rail-thumb"
+        [style.top.%]="windowThumb().top"
+        [style.height.%]="windowThumb().height"
+      ></div>
+      @for (tick of matchTicks(); track tick.index) {
+        <span class="rail-hit" [class.current]="tick.current" [style.top.%]="tick.pct"></span>
+      }
+    </div>
   </div>
+
+  <footer class="preview-foot mono">
+    <span>Ctrl+F / find</span>
+    <span>Enter next</span>
+    <span>Esc close</span>
+  </footer>
 </aside>

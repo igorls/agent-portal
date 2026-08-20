@@ -5,4 +5,26 @@ export type AppSettings = { ollamaHost: string, ollamaNamingModel: string, ollam
 /**
  * Shell that runs agent CLIs when launching from the board / wizard.
  */
-launchShell: LaunchShell, };
+launchShell: LaunchShell, 
+/**
+ * In-process MCP over HTTP on 127.0.0.1 (shares board/FTS/WormDB with GUI).
+ */
+mcpHttpEnabled: boolean, 
+/**
+ * Loopback port; `0` = ephemeral (reported via mcp_http_status after bind).
+ */
+mcpHttpPort: number, 
+/**
+ * Bearer token for `Authorization: Bearer …`. Empty → no auth (loopback only).
+ */
+mcpHttpToken: string, 
+/**
+ * Semantic embedder: `hash` (local FNV bag-of-words) or `ollama`.
+ */
+embedProvider: string, 
+/**
+ * Ollama embedding model when `embed_provider == "ollama"`. Empty = unset.
+ * **Changing this (or the provider) requires a full semantic reindex** —
+ * WormDB freezes dimension/embedder_id per namespace.
+ */
+ollamaEmbedModel: string, };

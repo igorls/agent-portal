@@ -1,0 +1,222 @@
+<div class="stack">
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <div class="section-title">Session search index</div>
+        <p>Background FTS content index and WormDB semantic chunks.</p>
+      </div>
+      <button
+        class="secondary refresh"
+        type="button"
+        [disabled]="store.indexRefreshing()"
+        (click)="refreshIndex()"
+      >
+        {{ store.indexRefreshing() ? 'Refreshing…' : 'Refresh' }}
+      </button>
+    </div>
+    @if (store.indexStatus(); as idx) {
+      <div class="index-meters">
+        <div class="index-row">
+          <div class="index-label">
+            <span>Content (FTS)</span>
+            <span class="index-meta">
+              {{ idx.contentDocs }} / {{ idx.boardSessions }}
+              @if (idx.contentDocs < idx.boardSessions && idx.contentEnabled) {
+                · indexing…
+              } @else if (idx.contentEnabled) {
+                · complete
+              } @else {
+                · unavailable
+              }
+            </span>
+          </div>
+          <div class="bar" aria-hidden="true">
+            <i [style.width.%]="indexPct(idx.contentDocs, idx.boardSessions)"></i>
+          </div>
+        </div>
+        <div class="index-row">
+          <div class="index-label">
+            <span>WormDB semantic</span>
+            <span class="index-meta">
+              @if (!idx.semanticEnabled) {
+                binary missing
+              } @else if (idx.hnswLive) {
+                up · HNSW
+              } @else {
+                ready
+              }
+              · {{ semanticDone(idx) }} / {{ idx.boardSessions }} sessions
+              @if (idx.semanticChunks > 0) {
+                · {{ idx.semanticChunks }} vectors
+              }
+              @if (idx.semanticPending) {
+                · {{ idx.semanticPending }} pending
+              }
+              @if (formatEta(idx.semanticEtaSecs); as eta) {
+                · ETA {{ eta }}
+              }
+            </span>
+          </div>
+          <div class="bar" aria-hidden="true">
+            <i [style.width.%]="indexPct(semanticDone(idx), idx.boardSessions)"></i>
+          </div>
+        </div>
+        <div class="semantic-live">
+          @if (idx.semanticEmbedder) {
+            <div class="index-note">
+              Embedder: <span class="mono">{{ idx.semanticEmbedder }}</span>
+            </div>
+          }
+          @if (idx.semanticPaused) {
+            <div class="index-note">
+              <strong>Paused</strong> — search still uses already-indexed sessions
+              @if (idx.semanticPending) {
+                <span class="index-meta"> · {{ idx.semanticPending }} waiting</span>
+              }
+              @if (formatEta(idx.semanticEtaSecs); as eta) {
+                <span class="index-meta"> · was ~{{ eta }} at last rate</span>
+              }
+            </div>
+          } @else if (idx.semanticActive && idx.semanticCurrent) {
+            <div class="index-note">
+              <strong>Indexing now:</strong> {{ idx.semanticCurrent }}
+              @if (idx.semanticPending) {
+                <span class="index-meta"> · {{ idx.semanticPending }} left</span>
+              }
+              @if (formatEta(idx.semanticEtaSecs); as eta) {
+                <span class="index-meta"> · ETA {{ eta }}</span>
+              }
+              @if (formatRate(idx.semanticRatePerMin); as rate) {
+                <span class="index-meta"> · {{ rate }}</span>
+              }
+            </div>
+          } @else if (idx.semanticPending && idx.semanticPending > 0) {
+            <div class="index-note">
+              Queued — {{ idx.semanticPending }} sessions waiting
+              @if (formatEta(idx.semanticEtaSecs); as eta) {
+                <span class="index-meta"> · ETA {{ eta }}</span>
+              }
+              @if (formatRate(idx.semanticRatePerMin); as rate) {
+                <span class="index-meta"> · {{ rate }}</span>
+              }
+            </div>
+          } @else if (!idx.semanticError) {
+            <div class="index-note">Semantic worker idle</div>
+          }
+          @if (idx.semanticError) {
+            <div class="warning-banner" role="alert">
+              <strong>Semantic index error</strong><br />
+              {{ idx.semanticError }}
+            </div>
+          }
+          <div class="host-row semantic-actions">
+            <button
+              type="button"
+              class="secondary"
+              [disabled]="store.pauseToggling() || !idx.semanticEnabled"
+              (click)="togglePause()"
+            >
+              @if (store.pauseToggling()) {
+                Updating…
+              } @else if (idx.semanticPaused) {
+                Resume indexing
+              } @else {
+                Pause indexing
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+      <p class="index-note">
+        Goal: find the session that mentioned a topic — not perfect answers from snippets. This tab
+        auto-refreshes every 3s while open.
+      </p>
+    } @else {
+      <p class="index-note">Index status unavailable.</p>
+    }
+  </section>
+
+  <section class="panel">
+    <div class="section-heading">
+      <div>
+        <div class="section-title">Embedding model</div>
+        <h2>Semantic search vectors</h2>
+      </div>
+    </div>
+    <p class="section-copy">
+      Chunks are embedded and stored in the local WormDB sidecar under a frozen dimension and
+      embedder id. <strong>Do not change the embedder casually</strong> — a different model (or even
+      the same family with a different dimension) requires a full semantic reindex. FTS content
+      search is unaffected.
+    </p>
+
+    <label>
+      <span>Provider</span>
+      <select
+        class="shell-select"
+        [value]="store.settings().embedProvider"
+        (change)="setProvider($any($event.target).value)"
+      >
+        <option value="hash">Hash (local, no model — plumbing / baseline)</option>
+        <option value="ollama">Ollama embedding model</option>
+      </select>
+    </label>
+
+    @if (store.settings().embedProvider === 'ollama') {
+      <label class="custom-model">
+        <span>Ollama embedding model</span>
+        <input
+          [value]="store.settings().ollamaEmbedModel"
+          (input)="setEmbedModel($any($event.target).value)"
+          list="embed-models"
+          placeholder="nomic-embed-text"
+        />
+        <datalist id="embed-models">
+          @if (store.ollama(); as status) {
+            @for (installed of status.modelDetails; track installed.name) {
+              <option [value]="installed.name"></option>
+            }
+          }
+          <option value="nomic-embed-text"></option>
+          <option value="mxbai-embed-large"></option>
+          <option value="all-minilm"></option>
+        </datalist>
+      </label>
+    }
+
+    <div class="warning-banner" role="note">
+      <strong>Reindex required on change.</strong>
+      Saving a different provider or model clears the WormDB semantic namespace and rebuilds vectors
+      in the background. Mismatched dimensions will reject inserts until reindex completes. Prefer
+      picking a model once and leaving it.
+    </div>
+
+    @if (store.embedderDirty()) {
+      <div class="warning-banner" role="status">
+        <strong>Unsaved embedder change.</strong>
+        Save settings to apply and start reindexing. Current queries may use the previous embedder
+        until then.
+      </div>
+    }
+
+    <div class="host-row" style="margin-top: 16px">
+      <button
+        type="button"
+        class="secondary danger"
+        [disabled]="store.reindexing()"
+        (click)="resetSemantic()"
+      >
+        {{ store.reindexing() ? 'Clearing…' : 'Clear & reindex semantic corpus' }}
+      </button>
+    </div>
+  </section>
+
+  <footer class="save-bar">
+    @if (store.saved()) {
+      <span class="saved">Saved</span>
+    }
+    <button type="button" [disabled]="store.saving()" (click)="save()">
+      {{ store.saving() ? 'Saving…' : store.embedderDirty() ? 'Save & reindex' : 'Save settings' }}
+    </button>
+  </footer>
+</div>

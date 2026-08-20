@@ -44,10 +44,36 @@ pub struct AppSettings {
     /// Shell that runs agent CLIs when launching from the board / wizard.
     #[serde(default)]
     pub launch_shell: LaunchShell,
+    /// In-process MCP over HTTP on 127.0.0.1 (shares board/FTS/WormDB with GUI).
+    #[serde(default = "default_true")]
+    pub mcp_http_enabled: bool,
+    /// Loopback port; `0` = ephemeral (reported via mcp_http_status after bind).
+    #[serde(default = "default_mcp_port")]
+    pub mcp_http_port: u16,
+    /// Bearer token for `Authorization: Bearer …`. Empty → no auth (loopback only).
+    #[serde(default)]
+    pub mcp_http_token: String,
+    /// Semantic embedder: `hash` (local FNV bag-of-words) or `ollama`.
+    #[serde(default = "default_embed_provider")]
+    pub embed_provider: String,
+    /// Ollama embedding model when `embed_provider == "ollama"`. Empty = unset.
+    /// **Changing this (or the provider) requires a full semantic reindex** —
+    /// WormDB freezes dimension/embedder_id per namespace.
+    #[serde(default)]
+    pub ollama_embed_model: String,
 }
 
 fn default_naming_model() -> String {
     ollama::DEFAULT_NAMING_MODEL.into()
+}
+fn default_true() -> bool {
+    true
+}
+fn default_mcp_port() -> u16 {
+    17432
+}
+fn default_embed_provider() -> String {
+    "hash".into()
 }
 
 impl Default for AppSettings {
@@ -57,6 +83,11 @@ impl Default for AppSettings {
             ollama_naming_model: default_naming_model(),
             ollama_model: ollama::DEFAULT_MODEL.into(),
             launch_shell: LaunchShell::Auto,
+            mcp_http_enabled: true,
+            mcp_http_port: default_mcp_port(),
+            mcp_http_token: String::new(),
+            embed_provider: default_embed_provider(),
+            ollama_embed_model: String::new(),
         }
     }
 }
@@ -76,7 +107,36 @@ impl AppSettings {
         if self.ollama_naming_model.trim().is_empty() {
             return Err(PortalError::Other("Ollama naming model is required".into()));
         }
+        let prov = self.embed_provider.trim().to_ascii_lowercase();
+        if prov != "hash" && prov != "ollama" {
+            return Err(PortalError::Other(
+                "embed_provider must be \"hash\" or \"ollama\"".into(),
+            ));
+        }
+        if prov == "ollama" && self.ollama_embed_model.trim().is_empty() {
+            return Err(PortalError::Other(
+                "Ollama embedding model is required when embed provider is ollama".into(),
+            ));
+        }
         Ok(())
+    }
+
+    /// Stable id stored in WormDB `mem_init` / chunk rows.
+    ///
+    /// Sanitized to WormDB's charset (`[A-Za-z0-9._/-]`, max 128 bytes) so
+    /// Ollama tags like `embeddinggemma:latest` do not fail `mem_init`.
+    pub fn embedder_id(&self) -> String {
+        match self.embed_provider.trim().to_ascii_lowercase().as_str() {
+            "ollama" => crate::search::sanitize_embedder_id(&format!(
+                "ollama/{}",
+                self.ollama_embed_model.trim()
+            )),
+            _ => crate::search::HASH_EMBEDDER_ID.to_string(),
+        }
+    }
+
+    pub fn embed_provider_is_ollama(&self) -> bool {
+        self.embed_provider.trim().eq_ignore_ascii_case("ollama")
     }
 }
 
@@ -117,6 +177,8 @@ impl SettingsStore {
             .to_string();
         settings.ollama_model = settings.ollama_model.trim().to_string();
         settings.ollama_naming_model = settings.ollama_naming_model.trim().to_string();
+        settings.embed_provider = settings.embed_provider.trim().to_ascii_lowercase();
+        settings.ollama_embed_model = settings.ollama_embed_model.trim().to_string();
         settings.validate()?;
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -141,6 +203,7 @@ mod tests {
             ollama_naming_model: "qwen3:0.6b".into(),
             ollama_model: "qwen3:8b".into(),
             launch_shell: LaunchShell::Pwsh,
+            ..Default::default()
         };
         store.save(&value).unwrap();
         assert_eq!(store.load().ollama_model, "qwen3:8b");

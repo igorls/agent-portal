@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { CdkDrag, CdkDragPreview, CdkDropList, CdkDragDrop } from '@angular/cdk/drag-drop';
 import { BoardStore } from '../../core/state/board.store';
 import { PortalCommands } from '../../core/ipc/commands';
@@ -222,6 +222,83 @@ export class BoardPage {
     const saved = Number(localStorage.getItem(RAIL_WIDTH_KEY));
     if (saved >= RAIL_WIDTH_MIN && saved <= RAIL_WIDTH_MAX) this.railWidth.set(saved);
     void this.store.load();
+
+    // Keep board selection available to global search / MCP-facing UI.
+    effect(() => {
+      const entry = this.activeEntry();
+      if (!entry) {
+        this.store.setActiveProject(null);
+        return;
+      }
+      this.store.setActiveProject({
+        id: entry.id,
+        label: entry.label,
+        path: entry.path,
+      });
+    });
+
+    // Global search palette → select project, unhide agent, open preview.
+    effect(() => {
+      const projectId = this.store.pendingProjectId();
+      if (!projectId) return;
+      this.selectedId.set(projectId);
+      this.store.clearPendingProject();
+    });
+    effect(() => {
+      const hl = this.store.pendingHighlight();
+      if (!hl) return;
+      this.hiddenAgents.update((set) => {
+        if (!set.has(hl.agentId)) return set;
+        const next = new Set(set);
+        next.delete(hl.agentId);
+        return next;
+      });
+      // Leave highlight for a short moment so CSS can flash if wired later.
+      setTimeout(() => this.store.clearPendingHighlight(), 2500);
+    });
+    effect(() => {
+      const preview = this.store.pendingPreview();
+      if (!preview) return;
+      // Consume immediately so we don't re-open on every recompute.
+      const req = this.store.takePendingPreview();
+      if (!req) return;
+      void this.openPreviewFromSearch(req.agentId, req.nativeId, req.storePath);
+    });
+  }
+
+  private async openPreviewFromSearch(
+    agentId: string,
+    nativeId: string,
+    storePath?: string,
+  ): Promise<void> {
+    // Prefer the board summary if present (has full SessionSummary fields).
+    for (const lane of this.store.board()?.lanes ?? []) {
+      if (lane.agent.id !== agentId) continue;
+      for (const project of lane.projects) {
+        const s = project.sessions.find((x) => x.nativeId === nativeId);
+        if (s) {
+          await this.openPreview(s);
+          return;
+        }
+      }
+    }
+    // Fallback: synthetic summary for preview IPC.
+    await this.openPreview({
+      agentId,
+      nativeId,
+      projectKey: '',
+      title: null,
+      cwd: null,
+      gitBranch: null,
+      model: null,
+      createdAt: null,
+      updatedAt: null,
+      messageCount: null,
+      messageCountExact: false,
+      sizeBytes: 0,
+      storePath: storePath ?? '',
+      maybeLive: false,
+    });
   }
 
   /** Drag the divider between the rail and stage to resize the rail. */

@@ -1,11 +1,12 @@
 //! xAI Grok Build adapter (directory-per-session store).
 //!
-//! Verified against Grok Build 0.2.93. Sessions live under
+//! Verified against Grok Build 0.2.93–1.0.5. Sessions live under
 //! `~/.grok/sessions/<percent-encoded-cwd>/<uuid>/`; cheap board metadata is
 //! in `summary.json`, while `chat_history.jsonl` contains the canonical chat.
 //!
-//! Native **write** uses the official `grok import` CLI for Claude Code
-//! origins only — raw store synthesis is intentionally unsupported.
+//! Native **write** is Claude Code only. Prefer `grok import` when the CLI
+//! still has it; Grok 1.0.x dropped that subcommand, so we synthesize a
+//! resumeable `summary.json` + `chat_history.jsonl` store instead.
 
 mod read;
 mod write;
@@ -44,10 +45,10 @@ impl AgentAdapter for GrokAdapter {
             launch_new: true,
             context_tokens: Some(256_000),
             write_confidence: Some("Experimental".into()),
-            version_range_tested: "0.2.93".to_string(),
+            version_range_tested: "0.2.93–1.0.5".to_string(),
             notes: vec![
                 "Sessions live under ~/.grok/sessions, grouped by encoded workspace".into(),
-                "Native Claude→Grok uses `grok import` when the CLI still exposes it; recent CLIs may only support brief migrations".into(),
+                "Native Claude→Grok uses `grok import` on older CLIs; Grok 1.0.x dropped import, so the adapter writes a resumeable store (summary.json + chat_history.jsonl)".into(),
                 "Other sources migrate via handoff brief".into(),
                 "Encrypted reasoning payloads cannot be transferred".into(),
             ],

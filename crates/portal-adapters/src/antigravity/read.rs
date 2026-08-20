@@ -1,19 +1,20 @@
 //! Antigravity `steps` protobuf -> IR (best-effort).
 //!
 //! The step model is rich and undocumented; v1 preserves all readable content:
-//! user text, assistant text, and tool activity (as text — tool call/result
-//! pairing isn't reliably recoverable). Fidelity is Partial, which is honest
-//! and plenty for a read/brief source.
+//! user text, assistant text, and tool activity as `ToolCall` blocks (results
+//! aren't reliably pairable). Fidelity is Partial, which is honest and plenty
+//! for a read/brief source.
 
 use std::path::Path;
 
 use chrono::Utc;
 use rusqlite::{Connection, OpenFlags};
+use serde_json::{json, Value};
 
 use portal_core::error::{PortalError, Result};
 use portal_core::ir::{
     Block, CanonicalSession, Fidelity, LossCode, LossNote, Role, SessionIdentity, Turn,
-    UsageTotals, Workspace, IR_VERSION,
+    UsageTotals, Workspace, IR_VERSION, RAW_ARGS_KEY,
 };
 use portal_core::util::paths::{label_from_cwd, normalize_cwd};
 
@@ -49,10 +50,25 @@ pub fn read_session(db_path: &Path, id: &str, cwd: Option<String>) -> Result<Can
             continue;
         };
         match extract(&payload) {
-            Some((role, text, is_tool)) => {
-                if is_tool {
-                    tool_steps += 1;
-                }
+            Some(Extracted::Tool { name, args }) => {
+                tool_steps += 1;
+                timeline.push(Turn {
+                    id: format!("s{idx}"),
+                    parent_id: None,
+                    role: Role::Assistant,
+                    timestamp: None,
+                    model: None,
+                    is_meta: false,
+                    blocks: vec![Block::ToolCall {
+                        call_id: format!("s{idx}"),
+                        name,
+                        arguments: parse_tool_args(&args),
+                    }],
+                    usage: None,
+                    raw: None,
+                });
+            }
+            Some(Extracted::Chat { role, text }) => {
                 timeline.push(Turn {
                     id: format!("s{idx}"),
                     parent_id: None,
@@ -79,13 +95,16 @@ pub fn read_session(db_path: &Path, id: &str, cwd: Option<String>) -> Result<Can
             _ => None,
         });
 
-    let mut losses = vec![LossNote {
-        code: LossCode::ToolPairingIncomplete,
-        detail: format!(
-            "{tool_steps} tool step(s) preserved as text (Antigravity's step model isn't fully decoded)"
-        ),
-        turn_id: None,
-    }];
+    let mut losses = Vec::new();
+    if tool_steps > 0 {
+        losses.push(LossNote {
+            code: LossCode::ToolPairingIncomplete,
+            detail: format!(
+                "{tool_steps} tool call(s) decoded; results aren't paired (Antigravity step model)"
+            ),
+            turn_id: None,
+        });
+    }
     if skipped > 0 {
         losses.push(LossNote {
             code: LossCode::UnknownRecord,
@@ -119,22 +138,21 @@ pub fn read_session(db_path: &Path, id: &str, cwd: Option<String>) -> Result<Can
     })
 }
 
-/// Pull (role, text, is_tool) out of a step payload. Returns None if there's
-/// nothing human-readable in it.
-fn extract(payload: &[u8]) -> Option<(Role, String, bool)> {
+enum Extracted {
+    Chat { role: Role, text: String },
+    Tool { name: String, args: String },
+}
+
+/// Pull chat text or a tool call out of a step payload.
+fn extract(payload: &[u8]) -> Option<Extracted> {
     let m = Msg::decode(payload);
 
     // Tool step: #5 -> #4 -> { #2 name, #3 args }
     if let Some(inner) = m.msg(5).map(|s| s.msg(4).unwrap_or_default()) {
         if let Some(name) = inner.str(2) {
-            if !name.is_empty() && name.len() < 60 {
-                let args = inner.str(3).map(|a| truncate(&a, 240)).unwrap_or_default();
-                let text = if args.is_empty() {
-                    format!("⚙ {name}")
-                } else {
-                    format!("⚙ {name}: {args}")
-                };
-                return Some((Role::Assistant, text, true));
+            if !name.is_empty() && name.len() < 80 {
+                let args = inner.str(3).unwrap_or_default();
+                return Some(Extracted::Tool { name, args });
             }
         }
     }
@@ -143,7 +161,10 @@ fn extract(payload: &[u8]) -> Option<(Role, String, bool)> {
     if let Some(u) = m.msg(19) {
         if let Some(t) = u.str(2).or_else(|| u.str(3)) {
             if is_texty(&t) {
-                return Some((Role::User, t, false));
+                return Some(Extracted::Chat {
+                    role: Role::User,
+                    text: t,
+                });
             }
         }
     }
@@ -152,7 +173,10 @@ fn extract(payload: &[u8]) -> Option<(Role, String, bool)> {
     if let Some(a) = m.msg(20) {
         if let Some(t) = a.str(3).or_else(|| a.str(2)) {
             if is_texty(&t) {
-                return Some((Role::Assistant, t, false));
+                return Some(Extracted::Chat {
+                    role: Role::Assistant,
+                    text: t,
+                });
             }
         }
     }
@@ -164,7 +188,21 @@ fn extract(payload: &[u8]) -> Option<(Role, String, bool)> {
         .into_iter()
         .filter(|s| is_texty(s))
         .max_by_key(|s| s.len())
-        .map(|t| (Role::Assistant, t, false))
+        .map(|t| Extracted::Chat {
+            role: Role::Assistant,
+            text: t,
+        })
+}
+
+fn parse_tool_args(args: &str) -> Value {
+    let t = args.trim();
+    if t.is_empty() {
+        return json!({});
+    }
+    if let Ok(value) = serde_json::from_str::<Value>(t) {
+        return value;
+    }
+    json!({ RAW_ARGS_KEY: t })
 }
 
 fn is_texty(s: &str) -> bool {
