@@ -132,7 +132,7 @@ fn tools_list() -> Value {
                             "description": "Loose substring on project label / path / key (e.g. agent-portal). Use projectId when you need exact identity."
                         },
                         "includeContent": { "type": "boolean", "description": "Include FTS content matches (default true)" },
-                        "includeSemantic": { "type": "boolean", "description": "Include WormDB semantic matches (default true when sidecar up)" }
+                        "includeSemantic": { "type": "boolean", "description": "Include WormDB semantic matches (default false; may wait for a cold sidecar)" }
                     },
                     "required": ["q"]
                 }
@@ -259,7 +259,7 @@ fn tool_search_sessions(state: &AppState, args: &Value) -> Result<String, Value>
     let include_semantic = args
         .get("includeSemantic")
         .and_then(|v| v.as_bool())
-        .unwrap_or(true);
+        .unwrap_or(false);
 
     let board = state
         .hot_board()
@@ -273,19 +273,26 @@ fn tool_search_sessions(state: &AppState, args: &Value) -> Result<String, Value>
         include_content,
         include_semantic,
     };
-    let port = state
-        .wormdb
-        .as_ref()
-        .and_then(|w| w.port())
-        .or_else(|| state.ensure_wormdb().ok());
-    let cfg = state.settings.load();
-    let embedder = portal_core::search::embedder_from_settings(&cfg);
+    let (port, embedder) = if include_semantic {
+        let port = state
+            .wormdb
+            .as_ref()
+            .and_then(|w| w.port())
+            .or_else(|| state.ensure_wormdb().ok());
+        let cfg = state.settings.load();
+        (
+            port,
+            Some(portal_core::search::embedder_from_settings(&cfg)),
+        )
+    } else {
+        (None, None)
+    };
     let resp = search::search_sessions_full(
         &board,
         &query,
         state.search.as_ref(),
         port,
-        Some(embedder.as_ref()),
+        embedder.as_deref(),
     );
     serde_json::to_string_pretty(&resp).map_err(|e| rpc_error(-32000, &e.to_string()))
 }

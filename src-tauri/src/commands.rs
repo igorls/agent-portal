@@ -98,28 +98,31 @@ pub async fn search_sessions(
                 "no board loaded yet — open the board or wait for the first refresh".into(),
             )
         })?;
-        let mut q = query;
-        // Prefer semantic when caller left the default and WormDB is available.
-        if !q.include_semantic {
-            // keep false if explicit; default from serde is false — enable when sidecar up
-        }
-        // Enable semantic by default for hybrid search when wormdb is reachable.
-        if s.wormdb.as_ref().is_some() {
-            q.include_semantic = true;
-        }
-        let port = s
-            .wormdb
-            .as_ref()
-            .and_then(|w| w.port())
-            .or_else(|| s.ensure_wormdb().ok());
-        let cfg = s.settings.load();
-        let embedder = portal_core::search::embedder_from_settings(&cfg);
+        // `include_semantic` is an explicit caller choice. In particular, the
+        // search palette disables it so metadata + FTS remain instant even if
+        // WormDB is cold, replaying a large WAL, or unavailable. Never touch
+        // the sidecar mutex on that fast path: a background startup may hold it
+        // for the full readiness timeout.
+        let (port, embedder) = if query.include_semantic {
+            let port = s
+                .wormdb
+                .as_ref()
+                .and_then(|w| w.port())
+                .or_else(|| s.ensure_wormdb().ok());
+            let cfg = s.settings.load();
+            (
+                port,
+                Some(portal_core::search::embedder_from_settings(&cfg)),
+            )
+        } else {
+            (None, None)
+        };
         Ok(search::search_sessions_full(
             &board,
-            &q,
+            &query,
             s.search.as_ref(),
             port,
-            Some(embedder.as_ref()),
+            embedder.as_deref(),
         ))
     })
     .await

@@ -15,6 +15,7 @@ use portal_core::migration::types::{MigrationKind, VerifyGrade};
 use portal_adapters::claude_code::{claude_slug, ClaudeCodeAdapter};
 use portal_adapters::codex::CodexAdapter;
 use portal_adapters::grok::GrokAdapter;
+use uuid::Uuid;
 
 fn fixture(rel: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -545,7 +546,13 @@ fn claude_to_grok_native_import_via_cli() {
 
     assert_eq!(result.kind, MigrationKind::Native);
     assert_eq!(result.target_agent, "grok-build");
-    assert_eq!(result.target_native_id, sid);
+    assert_ne!(result.target_native_id, sid);
+    assert_eq!(
+        Uuid::parse_str(&result.target_native_id)
+            .expect("Grok target id is a UUID")
+            .get_version_num(),
+        7
+    );
     let verify = result.verify.expect("verify report");
     assert!(
         matches!(verify.grade, VerifyGrade::Exact | VerifyGrade::Equivalent),
@@ -554,7 +561,10 @@ fn claude_to_grok_native_import_via_cli() {
     );
     assert_eq!(result.resume_command.program, "grok");
     assert!(result.resume_command.args.contains(&"--resume".into()));
-    assert!(result.resume_command.args.contains(&sid.into()));
+    assert!(result
+        .resume_command
+        .args
+        .contains(&result.target_native_id));
     assert!(result.resume_command.args.contains(&workspace_str));
 
     // Session lives under the real (Windows) workspace key, not the import rewrite.
