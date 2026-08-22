@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use portal_core::adapter::SessionLocator;
 use portal_core::dto::SessionSummary;
+use portal_core::error::PortalError;
 use portal_core::index::session_revision;
 use portal_core::ir::Role;
 use portal_core::search::{
@@ -328,7 +329,7 @@ fn run_pass(state: &AppState, embedder: &dyn Embedder, rate: &mut RateTracker) -
     };
 
     let mut candidates = collect_candidates(state, store, &board);
-    candidates.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms));
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.updated_ms));
     let pending_total = candidates.len() as u32;
 
     state.set_semantic_progress(|p| {
@@ -452,15 +453,41 @@ fn index_one(
     let Some(inst) = state.installation(&c.summary.agent_id) else {
         return Ok(false);
     };
-    let session = adapter
-        .read_session(
-            &inst,
-            &SessionLocator {
-                native_id: c.summary.native_id.clone(),
-                store_path: Some(c.summary.store_path.clone().into()),
-            },
-        )
-        .map_err(|e| format!("read_session: {e}"))?;
+    let session = match adapter.read_session(
+        &inst,
+        &SessionLocator {
+            native_id: c.summary.native_id.clone(),
+            store_path: Some(c.summary.store_path.clone().into()),
+        },
+    ) {
+        Ok(session) => session,
+        Err(PortalError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => {
+            // The board can briefly retain a session after its backing file is
+            // removed. Record this revision as an empty semantic document so
+            // the background worker does not retry the same stale row every
+            // second. A future board revision will make it eligible again.
+            if let Ok(old) = store.semantic_chunk_ids(&c.summary.agent_id, &c.summary.native_id) {
+                for id in old {
+                    let _ = client.delete_chunk(&id);
+                }
+            }
+            store
+                .upsert_semantic_state(
+                    &c.summary.agent_id,
+                    &c.summary.native_id,
+                    &c.revision,
+                    &[],
+                    embedder.id(),
+                )
+                .map_err(|e| format!("semantic_state for missing session: {e}"))?;
+            eprintln!(
+                "semantic index {}: source disappeared; marked current revision skipped",
+                c.summary.native_id
+            );
+            return Ok(true);
+        }
+        Err(e) => return Err(format!("read_session: {e}")),
+    };
 
     if let Ok(old) = store.semantic_chunk_ids(&c.summary.agent_id, &c.summary.native_id) {
         for id in old {
@@ -506,7 +533,7 @@ fn index_one(
                 batch.len()
             ));
         }
-        for ((doc_id, text, ch), emb) in batch.iter().zip(embeddings.into_iter()) {
+        for ((doc_id, text, ch), emb) in batch.iter().zip(embeddings) {
             let role = match ch.role {
                 Role::User => "user",
                 Role::Assistant => "assistant",

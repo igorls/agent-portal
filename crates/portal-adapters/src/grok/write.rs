@@ -55,7 +55,7 @@ pub fn plan_write(inst: &Installation, session: &CanonicalSession) -> Result<Wri
     let real_cwd = session.workspace.cwd.clone();
     let hint = PathBuf::from(&inst.store_root)
         .join(percent_encode(&real_cwd))
-        .join(&session.identity.native_id);
+        .join("<new-grok-session-id>");
 
     Ok(WritePlan {
         predicted_losses: losses,
@@ -164,40 +164,87 @@ fn grok_import_cli_available(inst: &Installation) -> bool {
     grok_import_subcommand_available(program)
 }
 
-fn grok_session_id(session: &CanonicalSession) -> String {
-    if uuid::Uuid::parse_str(&session.identity.native_id).is_ok() {
-        session.identity.native_id.clone()
-    } else {
-        uuid::Uuid::new_v4().to_string()
-    }
-}
-
 fn write_synthesized_store(
     inst: &Installation,
     session: &CanonicalSession,
 ) -> Result<WrittenSession> {
-    let native_id = grok_session_id(session);
+    // Grok's dashboard/session resolver indexes its native UUIDv7 directory
+    // names. Reusing a source agent's valid UUIDv4 produces a store that
+    // Agent Portal can read but `grok sessions` and `grok export` ignore.
+    let native_id = uuid::Uuid::now_v7().to_string();
+    write_synthesized_store_with_id(inst, session, &native_id)
+}
+
+fn write_synthesized_store_with_id(
+    inst: &Installation,
+    session: &CanonicalSession,
+    native_id: &str,
+) -> Result<WrittenSession> {
     let dest = PathBuf::from(&inst.store_root)
         .join(percent_encode(&session.workspace.cwd))
-        .join(&native_id);
-    if dest.exists() {
-        return Err(PortalError::Other(format!(
-            "Grok session already exists at {}",
-            dest.display()
-        )));
+        .join(native_id);
+    ensure_destination_available(&dest)?;
+
+    let parent = dest.parent().ok_or_else(|| {
+        PortalError::Other(format!("Grok session has no parent: {}", dest.display()))
+    })?;
+    std::fs::create_dir_all(parent)?;
+    let staging = parent.join(format!(
+        ".{native_id}.agent-portal-{}.tmp",
+        uuid::Uuid::now_v7()
+    ));
+    std::fs::create_dir(&staging)?;
+
+    if let Err(error) = write_synthesized_files(&staging, session, native_id) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
     }
-    std::fs::create_dir_all(&dest)?;
-    match write_synthesized_files(&dest, session, &native_id) {
-        Ok(artifacts) => Ok(WrittenSession {
-            native_id,
-            primary_path: dest.display().to_string(),
-            artifacts,
-        }),
+
+    // Recheck immediately before publishing to handle concurrent attempts.
+    // An empty destination is incomplete residue from an interrupted older
+    // write; a destination containing anything is real data and is preserved.
+    if let Err(error) = remove_empty_destination(&dest) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+    if let Err(error) = std::fs::rename(&staging, &dest) {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error.into());
+    }
+
+    let artifacts = match collect_dir_artifacts(&dest) {
+        Ok(artifacts) => artifacts,
         Err(error) => {
             let _ = std::fs::remove_dir_all(&dest);
-            Err(error)
+            return Err(error);
         }
+    };
+    Ok(WrittenSession {
+        native_id: native_id.to_string(),
+        primary_path: dest.display().to_string(),
+        artifacts,
+    })
+}
+
+fn ensure_destination_available(dest: &Path) -> Result<()> {
+    if !dest.exists() {
+        return Ok(());
     }
+    if dest.is_dir() && std::fs::read_dir(dest)?.next().is_none() {
+        return Ok(());
+    }
+    Err(PortalError::Other(format!(
+        "Grok session already exists at {}",
+        dest.display()
+    )))
+}
+
+fn remove_empty_destination(dest: &Path) -> Result<()> {
+    ensure_destination_available(dest)?;
+    if dest.exists() {
+        std::fs::remove_dir(dest)?;
+    }
+    Ok(())
 }
 
 fn write_synthesized_files(
@@ -244,6 +291,10 @@ fn write_synthesized_files(
         "last_active_at": now,
         "num_messages": records.len(),
         "num_chat_messages": chat_messages,
+        // Grok 1.0.5's dashboard deserializer requires these fields even for
+        // imported histories; without them it silently omits the directory.
+        "current_model_id": "grok-4.6",
+        "next_trace_turn": 0,
         "chat_format_version": 1,
         "session_kind": "claude_import",
         "head_branch": session.workspace.git_branch,
@@ -268,10 +319,17 @@ fn emit_chat_history(session: &CanonicalSession) -> (Vec<Value>, Vec<LossNote>) 
         match turn.role {
             Role::System => {}
             Role::User | Role::Tool => {
-                let mut texts = Vec::new();
                 for block in &turn.blocks {
                     match block {
-                        Block::Text { text } => texts.push(text.as_str()),
+                        Block::Text { text } if !text.trim().is_empty() => {
+                            // Keep distinct canonical text blocks distinct.
+                            // Joining them changes the text stream and makes a
+                            // valid synthesized session fail read-back verification.
+                            records.push(json!({
+                                "type": "user",
+                                "content": [{ "type": "text", "text": text }],
+                            }));
+                        }
                         Block::ToolResult {
                             call_id, output, ..
                         } => {
@@ -285,20 +343,23 @@ fn emit_chat_history(session: &CanonicalSession) -> (Vec<Value>, Vec<LossNote>) 
                         _ => {}
                     }
                 }
-                let joined = texts.join("\n\n");
-                if !joined.trim().is_empty() {
-                    records.push(json!({
-                        "type": "user",
-                        "content": [{ "type": "text", "text": joined }],
-                    }));
-                }
             }
             Role::Assistant => {
                 let mut texts = Vec::new();
                 let mut tool_calls = Vec::new();
                 for block in &turn.blocks {
                     match block {
-                        Block::Text { text } => texts.push(text.clone()),
+                        Block::Text { text } => {
+                            if !texts.is_empty() || !tool_calls.is_empty() {
+                                flush_assistant(
+                                    &mut records,
+                                    &mut texts,
+                                    &mut tool_calls,
+                                    turn.model.as_deref(),
+                                );
+                            }
+                            texts.push(text.clone());
+                        }
                         Block::Thinking { .. } => thinking_dropped += 1,
                         Block::ToolCall {
                             call_id,
@@ -567,12 +628,7 @@ fn rehome_session(
     let dest_parent = store_root.join(percent_encode(real_cwd));
     std::fs::create_dir_all(&dest_parent)?;
     let dest = dest_parent.join(native_id);
-    if dest.exists() {
-        return Err(PortalError::Other(format!(
-            "Grok session already exists at {}",
-            dest.display()
-        )));
-    }
+    remove_empty_destination(&dest)?;
     std::fs::rename(imported_dir, &dest).map_err(|e| {
         PortalError::Other(format!(
             "failed to re-home imported Grok session to real workspace path: {e}"
@@ -699,12 +755,13 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         let cwd = tmp.join("workspace");
         std::fs::create_dir_all(&cwd).unwrap();
-        let sid = "55555555-5555-4555-8555-555555555555";
+        let source_sid = "55555555-5555-4555-8555-555555555555";
+        let target_sid = "018f7777-7777-7777-8777-777777777777";
         let session = CanonicalSession {
             ir_version: IR_VERSION,
             identity: SessionIdentity {
                 portal_id: uuid::Uuid::now_v7().to_string(),
-                native_id: sid.into(),
+                native_id: source_sid.into(),
                 agent_id: "claude-code".into(),
                 store_path: "missing.jsonl".into(),
                 agent_version: Some("2.1.206".into()),
@@ -773,9 +830,14 @@ mod tests {
                     timestamp: None,
                     model: Some("claude-sonnet-4".into()),
                     is_meta: false,
-                    blocks: vec![Block::Text {
-                        text: "Importer ready.".into(),
-                    }],
+                    blocks: vec![
+                        Block::Text {
+                            text: "Importer ready.".into(),
+                        },
+                        Block::Text {
+                            text: "Distinct follow-up block.".into(),
+                        },
+                    ],
                     usage: None,
                     raw: None,
                 },
@@ -791,8 +853,14 @@ mod tests {
             version: Some("grok 1.0.5".into()),
             store_root: tmp.join("sessions").display().to_string(),
         };
-        let written = write_session(&inst, &session, &WriteOptions::default()).unwrap();
-        assert_eq!(written.native_id, sid);
+        // An interrupted prior attempt may leave the predicted directory but
+        // no Grok files. A retry should reclaim that empty residue.
+        let expected_dir = PathBuf::from(&inst.store_root)
+            .join(percent_encode(&session.workspace.cwd))
+            .join(target_sid);
+        std::fs::create_dir_all(&expected_dir).unwrap();
+        let written = write_synthesized_store_with_id(&inst, &session, target_sid).unwrap();
+        assert_eq!(written.native_id, target_sid);
         let dir = PathBuf::from(&written.primary_path);
         let chat = std::fs::read_to_string(dir.join("chat_history.jsonl")).unwrap();
         assert!(chat.contains("Scaffold the importer"));
@@ -802,11 +870,46 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(dir.join("summary.json")).unwrap())
                 .unwrap();
         assert_eq!(summary["chat_format_version"].as_u64(), Some(1));
+        assert_eq!(summary["current_model_id"].as_str(), Some("grok-4.6"));
+        assert_eq!(summary["next_trace_turn"].as_u64(), Some(0));
         assert_eq!(summary["session_kind"].as_str(), Some("claude_import"));
         assert_eq!(
             summary["info"]["cwd"].as_str(),
             Some(cwd.display().to_string().as_str())
         );
+        let round_tripped = crate::grok::read::read_session(
+            &inst,
+            &portal_core::adapter::SessionLocator {
+                native_id: target_sid.into(),
+                store_path: Some(dir.clone()),
+            },
+        )
+        .unwrap();
+        let text_verify =
+            portal_core::migration::verify::compare_text_stream(&session, &round_tripped);
+        assert_eq!(
+            text_verify.grade,
+            portal_core::migration::types::VerifyGrade::Equivalent,
+            "{:?}",
+            text_verify.diffs
+        );
+
+        // Once real session data exists, a retry must not overwrite it.
+        let duplicate = write_synthesized_store_with_id(&inst, &session, target_sid).unwrap_err();
+        assert!(duplicate
+            .to_string()
+            .contains("Grok session already exists"));
+        assert_eq!(
+            std::fs::read_to_string(dir.join("chat_history.jsonl")).unwrap(),
+            chat
+        );
+
+        // Public synthesis always allocates a Grok-native UUIDv7 instead of
+        // reusing the source agent's UUID (which may be UUIDv4).
+        let fresh = write_session(&inst, &session, &WriteOptions::default()).unwrap();
+        let parsed = uuid::Uuid::parse_str(&fresh.native_id).unwrap();
+        assert_eq!(parsed.get_version_num(), 7);
+        assert_ne!(fresh.native_id, source_sid);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

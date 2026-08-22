@@ -87,7 +87,7 @@ fn run_pass(state: &AppState) -> u32 {
     }
 
     // Newest first, then never-indexed (empty revision check already done).
-    candidates.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms));
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.updated_ms));
     let pending_total = candidates.len() as u32;
 
     let mut reads = 0usize;

@@ -48,6 +48,35 @@
       letter-spacing: -0.01em;
     }
 
+    .title-actions {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex: 0 0 auto;
+    }
+
+    .open-agent {
+      min-height: 26px;
+      padding: 3px 9px;
+      border: 1px solid var(--accent-line);
+      border-radius: var(--r-sm);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        color: var(--text-hi);
+        border-color: var(--accent);
+      }
+
+      &:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    }
+
     .close {
       flex: 0 0 auto;
       width: 26px;
@@ -68,6 +97,13 @@
         border-color: var(--line-strong);
       }
     }
+  }
+
+  .launch-error {
+    margin-top: 8px;
+    color: var(--danger);
+    font-size: 0.72rem;
+    line-height: 1.35;
   }
 
   .facts {

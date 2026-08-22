@@ -2,8 +2,22 @@
   <header class="preview-header">
     <div class="title-row">
       <h3>{{ session().title ?? session().identity.nativeId.slice(0, 8) }}</h3>
-      <button class="close" type="button" (click)="closed.emit()" title="Close (Esc)">✕</button>
+      <div class="title-actions">
+        <button
+          class="open-agent"
+          type="button"
+          (click)="openInAgent()"
+          [disabled]="launching() || !session().workspace.cwd.trim()"
+          [title]="'Resume this session in ' + agentLabel()"
+        >
+          {{ launching() ? 'Opening…' : 'Open in ' + agentLabel() }}
+        </button>
+        <button class="close" type="button" (click)="closed.emit()" title="Close (Esc)">✕</button>
+      </div>
     </div>
+    @if (launchError(); as error) {
+      <div class="launch-error" role="alert">{{ error }}</div>
+    }
     <div class="facts">
       <span class="chip agent">{{ session().identity.agentId }}</span>
       <span class="chip fidelity">{{ session().fidelity }}</span>

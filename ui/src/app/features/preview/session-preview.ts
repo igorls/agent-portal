@@ -17,6 +17,7 @@ import { DatePipe } from '@angular/common';
 import type { Block } from '../../core/ipc/gen/Block';
 import type { CanonicalSession } from '../../core/ipc/gen/CanonicalSession';
 import type { Turn } from '../../core/ipc/gen/Turn';
+import { PortalCommands } from '../../core/ipc/commands';
 import {
   findMatches,
   groupAssistantWork,
@@ -57,6 +58,7 @@ export class SessionPreview {
   readonly closed = output<void>();
 
   private readonly injector = inject(Injector);
+  private readonly commands = inject(PortalCommands);
   private readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
   private readonly scroller = viewChild<ElementRef<HTMLElement>>('scroller');
 
@@ -69,6 +71,25 @@ export class SessionPreview {
   protected readonly expanded = signal<ReadonlySet<string>>(new Set());
   protected readonly textOpen = signal<ReadonlySet<string>>(new Set());
   protected readonly openGroups = signal<ReadonlySet<string>>(new Set());
+  protected readonly launching = signal(false);
+  protected readonly launchError = signal<string | null>(null);
+
+  protected readonly agentLabel = computed(() => {
+    const labels: Record<string, string> = {
+      'claude-code': 'Claude Code',
+      'claude-cowork': 'Claude Cowork',
+      codex: 'Codex CLI',
+      opencode: 'OpenCode',
+      antigravity: 'Antigravity',
+      copilot: 'GitHub Copilot',
+      'grok-build': 'Grok Build',
+      'factory-droid': 'Factory Droid',
+      pi: 'Pi',
+      junie: 'Junie',
+    };
+    const id = this.session().identity.agentId;
+    return labels[id] ?? id;
+  });
 
   protected readonly filteredTurns = computed<Turn[]>(() => {
     const showMeta = this.showMeta();
@@ -367,6 +388,25 @@ export class SessionPreview {
 
   protected absoluteIndex(local: number): number {
     return this.windowStart() + local + 1;
+  }
+
+  protected async openInAgent(): Promise<void> {
+    const session = this.session();
+    const cwd = session.workspace.cwd.trim();
+    if (!cwd || this.launching()) return;
+    this.launching.set(true);
+    this.launchError.set(null);
+    try {
+      await this.commands.launchSession(
+        session.identity.agentId,
+        session.identity.nativeId,
+        cwd,
+      );
+    } catch (error) {
+      this.launchError.set(String(error));
+    } finally {
+      this.launching.set(false);
+    }
   }
 
   private focusSearch(): void {
