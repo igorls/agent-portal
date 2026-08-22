@@ -262,8 +262,7 @@ impl OllamaEmbedder {
                 *self.dim.lock().unwrap() = Some(first.len());
             }
         }
-        Ok(rows
-            .into_iter()
+        rows.into_iter()
             .map(|v| {
                 if v.is_empty() {
                     Err(PortalError::Other(
@@ -273,7 +272,7 @@ impl OllamaEmbedder {
                     Ok(f64_embedding_to_bytes(&v))
                 }
             })
-            .collect::<Result<Vec<_>>>()?)
+            .collect::<Result<Vec<_>>>()
     }
 
     fn embed_legacy(&self, text: &str) -> Result<Vec<f64>> {

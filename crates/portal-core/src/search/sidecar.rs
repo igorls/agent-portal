@@ -254,7 +254,6 @@ fn pid_alive(pid: u32) -> bool {
     #[cfg(windows)]
     {
         // OpenProcess with limited query; null handle => not alive.
-        use std::ptr;
         extern "system" {
             fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
             fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
@@ -262,7 +261,7 @@ fn pid_alive(pid: u32) -> bool {
         const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
         unsafe {
             let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-            if h.is_null() || h == ptr::null_mut() {
+            if h.is_null() {
                 return false;
             }
             CloseHandle(h);
@@ -570,7 +569,7 @@ mod tests {
         std::fs::create_dir_all(&tmp).unwrap();
         let fake = tmp.join(wormdb_file_name());
         std::fs::write(&fake, b"not-a-real-binary").unwrap();
-        let p = resolve_wormdb_binary(None, &[tmp.clone()]);
+        let p = resolve_wormdb_binary(None, std::slice::from_ref(&tmp));
         assert_eq!(p, fake);
         let _ = std::fs::remove_dir_all(&tmp);
     }

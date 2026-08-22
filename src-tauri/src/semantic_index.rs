@@ -329,7 +329,7 @@ fn run_pass(state: &AppState, embedder: &dyn Embedder, rate: &mut RateTracker) -
     };
 
     let mut candidates = collect_candidates(state, store, &board);
-    candidates.sort_by(|a, b| b.updated_ms.cmp(&a.updated_ms));
+    candidates.sort_by_key(|b| std::cmp::Reverse(b.updated_ms));
     let pending_total = candidates.len() as u32;
 
     state.set_semantic_progress(|p| {
@@ -533,7 +533,7 @@ fn index_one(
                 batch.len()
             ));
         }
-        for ((doc_id, text, ch), emb) in batch.iter().zip(embeddings.into_iter()) {
+        for ((doc_id, text, ch), emb) in batch.iter().zip(embeddings) {
             let role = match ch.role {
                 Role::User => "user",
                 Role::Assistant => "assistant",

@@ -231,7 +231,7 @@ pub fn search_sessions(
 ) -> SearchResponse {
     let started = std::time::Instant::now();
     let q = query.q.trim();
-    let limit = query.limit.max(1).min(100) as usize;
+    let limit = query.limit.clamp(1, 100) as usize;
     let content_available = !fts_hits.is_empty() || query.include_content;
     let semantic_available = !semantic_hits.is_empty() || query.include_semantic;
 
@@ -321,7 +321,7 @@ fn semantic_search(
     let emb = embedder.embed(&query.q)?;
     let client = MemClient::connect(port)?;
     let filter = mem_filter_from_query(query);
-    let k = (query.limit.max(1).min(100) * 4).min(80);
+    let k = (query.limit.clamp(1, 100) * 4).min(80);
     // Session discovery: prefer fewer stronger neighbors over a soft flood.
     // min_score is cosine-ish (WormDB); 0.18 drops pure noise while keeping paraphrases.
     let hits = client.query(
@@ -333,7 +333,7 @@ fn semantic_search(
         filter.as_deref(),
     )?;
     let mut session_hits = mem_hits_to_search_hits(hits, query);
-    session_hits.truncate(query.limit.max(1).min(100) as usize);
+    session_hits.truncate(query.limit.clamp(1, 100) as usize);
     Ok(session_hits)
 }
 

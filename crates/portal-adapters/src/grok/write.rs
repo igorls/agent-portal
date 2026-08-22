@@ -195,7 +195,7 @@ fn write_synthesized_store_with_id(
     ));
     std::fs::create_dir(&staging)?;
 
-    if let Err(error) = write_synthesized_files(&staging, session, &native_id) {
+    if let Err(error) = write_synthesized_files(&staging, session, native_id) {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
     }

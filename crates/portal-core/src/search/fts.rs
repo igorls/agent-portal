@@ -347,7 +347,7 @@ impl SearchStore {
         if fts_q.is_empty() {
             return Ok(Vec::new());
         }
-        let limit = query.limit.max(1).min(100) as i64;
+        let limit = query.limit.clamp(1, 100) as i64;
         let agent_filter = if query.agent_ids.is_empty() {
             None
         } else {

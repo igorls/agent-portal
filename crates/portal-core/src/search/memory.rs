@@ -349,6 +349,7 @@ pub fn mem_hits_to_search_hits(hits: Vec<MemHit>, query: &SearchQuery) -> Vec<Se
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn build_meta_json(
     agent_id: &str,
     native_id: &str,
