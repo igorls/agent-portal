@@ -328,6 +328,7 @@ fn tokenize(text: &str) -> Vec<String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::chunks_exact_to_as_chunks)]
 mod tests {
     use super::*;
 
