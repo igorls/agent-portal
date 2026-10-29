@@ -65,7 +65,9 @@ header {
     border-radius: var(--r-sm);
     color: var(--text-lo);
     cursor: pointer;
-    transition: color 0.14s, border-color 0.14s;
+    transition:
+      color 0.14s,
+      border-color 0.14s;
 
     &:hover {
       color: var(--text-hi);
@@ -238,7 +240,10 @@ header {
   border-radius: var(--r-md);
   padding: 14px;
   cursor: pointer;
-  transition: border-color 0.14s, background 0.14s, transform 0.14s;
+  transition:
+    border-color 0.14s,
+    background 0.14s,
+    transform 0.14s;
 
   &:hover {
     border-color: var(--accent-line);
@@ -452,7 +457,10 @@ footer {
     font-weight: 500;
     cursor: pointer;
     border: 1px solid transparent;
-    transition: background 0.14s, border-color 0.14s, color 0.14s;
+    transition:
+      background 0.14s,
+      border-color 0.14s,
+      color 0.14s;
 
     &.ghost {
       background: none;
@@ -476,4 +484,13 @@ footer {
       }
     }
   }
+}
+select,
+input {
+  max-width: 100%;
+}
+.pane label {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0;
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use portal_core::adapter::SessionLocator;
 use portal_core::dto::{
-    AgentDescriptor, BoardSnapshot, Health, NamingCounts, NamingEntry, NamingReport,
+    AgentDescriptor, BoardSnapshot, Health, NamingCounts, NamingEntry, NamingReport, SessionSummary,
 };
 use portal_core::error::PortalError;
 use portal_core::index::session_revision;
@@ -379,6 +379,7 @@ pub async fn plan_migration(
     target_agent: String,
     mode: String,
     enhance: Option<bool>,
+    destination: Option<portal_core::migration::types::MigrationDestination>,
 ) -> Result<DryRunReport, PortalError> {
     let s = state.inner().clone();
     run_blocking(move || {
@@ -407,7 +408,7 @@ pub async fn plan_migration(
             model: settings.ollama_model,
         };
 
-        let planned = engine::plan(
+        let planned = engine::plan_with_destination(
             &source_adapter,
             &source_inst,
             &target_adapter,
@@ -418,9 +419,10 @@ pub async fn plan_migration(
             },
             kind,
             &brief_cfg,
+            destination,
         )?;
         let report = planned.report.clone();
-        s.store_plan(planned);
+        s.store_plan(planned)?;
         Ok(report)
     })
     .await
@@ -434,7 +436,7 @@ pub async fn execute_migration(
     let s = state.inner().clone();
     run_blocking(move || {
         let planned = s
-            .take_plan(&plan_id)
+            .take_plan(&plan_id)?
             .ok_or_else(|| PortalError::Other("plan expired; re-run the dry run".to_string()))?;
         let target_adapter = s
             .adapter(&planned.target_agent)
@@ -442,7 +444,27 @@ pub async fn execute_migration(
         let target_inst = s
             .installation(&planned.target_agent)
             .ok_or_else(|| PortalError::Other("target agent not detected".to_string()))?;
-        engine::execute(&planned, &target_adapter, &target_inst, &s.ledger)
+        let result = engine::execute(&planned, &target_adapter, &target_inst, &s.ledger)?;
+        s.finish_plan(&plan_id);
+        Ok(result)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn migration_destinations(
+    state: tauri::State<'_, Arc<AppState>>,
+    agent_id: String,
+) -> Result<portal_core::migration::types::DestinationChoices, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        let adapter = s
+            .adapter(&agent_id)
+            .ok_or_else(|| PortalError::Other("Unknown target agent".into()))?;
+        let inst = s
+            .installation(&agent_id)
+            .ok_or_else(|| PortalError::Other("Target not installed".into()))?;
+        adapter.destination_choices(&inst)
     })
     .await
 }
@@ -529,7 +551,8 @@ pub async fn undo_migration(
         let entry = s.ledger.get(&migration_id)?.ok_or_else(|| {
             PortalError::Other("migration not found in the activity log".to_string())
         })?;
-        engine::undo(&entry, &s.ledger, force.unwrap_or(false))
+        let adapter = s.adapter(&entry.target_agent);
+        engine::undo_with_adapter(&entry, &s.ledger, force.unwrap_or(false), adapter.as_ref())
     })
     .await
 }
@@ -658,4 +681,36 @@ where
     tauri::async_runtime::spawn_blocking(f)
         .await
         .map_err(|e| PortalError::Other(format!("task join error: {e}")))?
+}
+
+#[tauri::command]
+pub async fn recoverable_migrations(
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<Vec<DryRunReport>, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || Ok(s.recoverable_plans())).await
+}
+
+#[tauri::command]
+pub async fn stage_chatgpt_export(
+    state: tauri::State<'_, Arc<AppState>>,
+    json: String,
+    conversation_id: Option<String>,
+) -> Result<SessionSummary, PortalError> {
+    let s = state.inner().clone();
+    run_blocking(move || {
+        portal_adapters::chatgpt_web::stage_selected_export(
+            &portal_adapters::chatgpt_web::default_root(&s.env),
+            &json,
+            conversation_id.as_deref(),
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn inspect_chatgpt_export(
+    json: String,
+) -> Result<Vec<portal_core::dto::ChatGptExportChoice>, PortalError> {
+    run_blocking(move || portal_adapters::chatgpt_web::export_choices(&json)).await
 }

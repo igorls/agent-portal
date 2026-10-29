@@ -6,11 +6,13 @@ import type { LedgerEntry } from '../../core/ipc/gen/LedgerEntry';
 import type { NamingReport } from '../../core/ipc/gen/NamingReport';
 import type { NamingProgress } from '../../core/ipc/gen/NamingProgress';
 import type { NamingEntry } from '../../core/ipc/gen/NamingEntry';
+import type { DryRunReport } from '../../core/ipc/gen/DryRunReport';
 
 const AGENT_LABELS: Record<string, string> = {
   'claude-code': 'Claude Code',
   'claude-cowork': 'Claude Cowork',
   codex: 'Codex CLI',
+  bentokit: 'BentoKit Core',
   opencode: 'OpenCode',
   antigravity: 'Antigravity',
   copilot: 'GitHub Copilot',
@@ -52,6 +54,7 @@ export class ActivityPage {
   private readonly commands = inject(PortalCommands);
 
   protected readonly entries = signal<LedgerEntry[]>([]);
+  protected readonly recoverable = signal<DryRunReport[]>([]);
   protected readonly loading = signal(false);
   protected readonly error = signal<string | null>(null);
   protected readonly busy = signal<string | null>(null);
@@ -76,12 +79,8 @@ export class ActivityPage {
   /** Ticks every second so the "next pass" countdown stays live. */
   protected readonly now = signal(Date.now());
 
-  protected readonly activeCount = computed(
-    () => this.entries().filter((e) => !e.undone).length
-  );
-  protected readonly undoneCount = computed(
-    () => this.entries().filter((e) => e.undone).length
-  );
+  protected readonly activeCount = computed(() => this.entries().filter((e) => !e.undone).length);
+  protected readonly undoneCount = computed(() => this.entries().filter((e) => e.undone).length);
 
   /** Migrations after search + undone filter (newest first — already from API). */
   protected readonly filteredEntries = computed(() => {
@@ -106,15 +105,15 @@ export class ActivityPage {
   });
 
   protected readonly visibleEntries = computed(() =>
-    this.filteredEntries().slice(0, this.migrationLimit())
+    this.filteredEntries().slice(0, this.migrationLimit()),
   );
 
   protected readonly hiddenMigrationCount = computed(() =>
-    Math.max(0, this.filteredEntries().length - this.visibleEntries().length)
+    Math.max(0, this.filteredEntries().length - this.visibleEntries().length),
   );
 
   protected readonly nextMigrationBatch = computed(() =>
-    Math.min(this.hiddenMigrationCount(), MIGRATION_PAGE)
+    Math.min(this.hiddenMigrationCount(), MIGRATION_PAGE),
   );
 
   /** Day-grouped slice of the visible migrations. */
@@ -144,7 +143,8 @@ export class ActivityPage {
     if (!n.ollamaAvailable) return { label: 'Ollama offline', tone: 'off' };
     if (!n.modelPresent) return { label: `Model "${n.model}" not installed`, tone: 'off' };
     if (n.progress.active) return { label: 'Naming now', tone: 'active' };
-    if (n.recent.pending + n.recent.stale > 0) return { label: 'Waiting for next pass', tone: 'idle' };
+    if (n.recent.pending + n.recent.stale > 0)
+      return { label: 'Waiting for next pass', tone: 'idle' };
     return { label: 'Up to date', tone: 'ok' };
   });
 
@@ -174,7 +174,7 @@ export class ActivityPage {
   });
 
   protected readonly nextTitleBatch = computed(() =>
-    Math.min(this.hiddenTitleCount(), TITLES_PAGE)
+    Math.min(this.hiddenTitleCount(), TITLES_PAGE),
   );
 
   constructor() {
@@ -201,6 +201,7 @@ export class ActivityPage {
       this.entries.set(await this.commands.listActivity());
       // Keep the user's scroll window after undo/refresh.
       this.migrationLimit.update((n) => Math.max(n, MIGRATION_PAGE));
+      this.recoverable.set(await this.commands.recoverableMigrations());
     } catch (e) {
       this.error.set(String(e));
     } finally {
@@ -214,6 +215,18 @@ export class ActivityPage {
       this.naming.set(await this.commands.namingStatus());
     } catch (e) {
       this.namingError.set(String(e));
+    }
+  }
+
+  protected async recover(plan: DryRunReport): Promise<void> {
+    this.busy.set(plan.planId);
+    try {
+      await this.commands.executeMigration(plan.planId);
+      await this.load();
+    } catch (e) {
+      this.error.set(String(e));
+    } finally {
+      this.busy.set(null);
     }
   }
 
@@ -265,7 +278,7 @@ export class ActivityPage {
       } else {
         this.note.set(
           `Removed ${report.removed.length} artifact${report.removed.length === 1 ? '' : 's'}` +
-            (report.skipped.length ? ` · ${report.skipped.length} kept` : '')
+            (report.skipped.length ? ` · ${report.skipped.length} kept` : ''),
         );
       }
       await this.load();

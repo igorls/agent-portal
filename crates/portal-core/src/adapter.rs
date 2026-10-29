@@ -4,7 +4,10 @@ use std::path::PathBuf;
 use crate::dto::{Capabilities, Installation, ProjectRef, SessionSummary, SupportLevel};
 use crate::error::{PortalError, Result};
 use crate::ir::CanonicalSession;
-use crate::migration::types::{CommandSpec, WriteOptions, WritePlan, WrittenSession};
+use crate::migration::types::{
+    CommandSpec, DestinationChoices, MigrationDestination, SessionArtifact, WriteOptions,
+    WritePlan, WrittenSession,
+};
 
 /// How commands refer to a session. `store_path` is an optimization hint
 /// (the UI already knows it from enumeration); adapters must validate it
@@ -65,6 +68,40 @@ pub trait AgentAdapter: Send + Sync {
     /// Code only) override this and usually set `write_native` to `Partial`.
     fn accepts_native_from(&self, _source_agent_id: &str) -> bool {
         self.capabilities().write_native == SupportLevel::Full
+    }
+
+    fn capabilities_for(&self, _inst: Option<&Installation>) -> Capabilities {
+        self.capabilities()
+    }
+
+    fn destination_choices(&self, _inst: &Installation) -> Result<DestinationChoices> {
+        Ok(DestinationChoices {
+            profiles: vec![],
+            projects: vec![],
+        })
+    }
+
+    fn plan_write_to(
+        &self,
+        inst: &Installation,
+        session: &CanonicalSession,
+        _destination: Option<&MigrationDestination>,
+    ) -> Result<WritePlan> {
+        self.plan_write(inst, session)
+    }
+
+    fn undo_session(&self, _artifact: &SessionArtifact) -> Result<()> {
+        Err(PortalError::Unsupported("undo_session"))
+    }
+
+    fn resume_at(
+        &self,
+        inst: &Installation,
+        native_id: &str,
+        cwd: &str,
+        _destination: Option<&MigrationDestination>,
+    ) -> Result<CommandSpec> {
+        self.resume_command(inst, native_id, cwd)
     }
 
     /// Detect installation: CLI on PATH and/or store dir present. Either

@@ -22,23 +22,17 @@ impl CommandSpec {
         self.posix_line()
     }
 
-    /// POSIX-ish command line (double-quoted args that need it).
+    /// POSIX command line with literal program and argument quoting.
     pub fn posix_line(&self) -> String {
-        let mut parts = vec![self.program.clone()];
-        parts.extend(self.args.iter().map(|a| {
-            if a.is_empty() || a.contains(|c: char| c.is_whitespace() || "\"'\\$`!".contains(c)) {
-                format!("\"{}\"", a.replace('\\', "\\\\").replace('"', "\\\""))
-            } else {
-                a.clone()
-            }
-        }));
+        let mut parts = vec![shell_quote(&self.program)];
+        parts.extend(self.args.iter().map(|a| shell_quote(a)));
         parts.join(" ")
     }
 
     /// PowerShell command line with single-quoted args (safe for prompts that
     /// contain spaces, backslashes, and paths). Passed as `pwsh -Command`.
     pub fn pwsh_line(&self) -> String {
-        let mut parts = vec![self.program.clone()];
+        let mut parts = vec![format!("& '{}'", self.program.replace('\'', "''"))];
         parts.extend(
             self.args
                 .iter()
@@ -64,10 +58,60 @@ fn quote_cmd(s: &str) -> String {
     }
 }
 
+pub fn shell_quote(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_./:-=".contains(c))
+    {
+        value.into()
+    } else {
+        format!("'{}'", value.replace('\'', "'\"'\"'"))
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct WriteOptions {
     /// Title to register in the target's index/metadata where supported.
     pub title: Option<String>,
+    pub destination: Option<MigrationDestination>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationDestination {
+    pub profile: String,
+    pub project_id: Option<String>,
+    pub endpoint: Option<String>,
+    // A deliberate migration gets a new key; retries keep this plan's key.
+    #[serde(default)]
+    pub operation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct DestinationChoices {
+    pub profiles: Vec<String>,
+    pub projects: Vec<DestinationProject>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct DestinationProject {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionArtifact {
+    pub installation: crate::dto::Installation,
+    pub native_id: String,
+    pub revision: String,
 }
 
 /// What a migration actually does. Native converts to a resumable session;
@@ -89,6 +133,8 @@ pub enum ArtifactKind {
     File,
     /// A line appended to a shared index file; undo restores the backup.
     IndexAppendLine,
+    /// One durable agent-owned conversation; never delete the shared DB.
+    AgentSession,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -103,6 +149,8 @@ pub struct WrittenArtifact {
     /// session, in which case the file is left alone.
     #[serde(default)]
     pub content_hash: Option<String>,
+    #[serde(default)]
+    pub session: Option<SessionArtifact>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

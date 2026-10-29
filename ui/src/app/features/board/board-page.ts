@@ -6,11 +6,13 @@ import { SessionPreview } from '../preview/session-preview';
 import { MigrationWizard, type MigrationRequest } from '../migration/migration-wizard';
 import type { CanonicalSession } from '../../core/ipc/gen/CanonicalSession';
 import type { SessionSummary } from '../../core/ipc/gen/SessionSummary';
+import type { ChatGptExportChoice } from '../../core/ipc/gen/ChatGptExportChoice';
 
 const LANE_ACCENTS: Record<string, string> = {
   'claude-code': '#e8956a',
   'claude-cowork': '#d97757',
   codex: '#5bbfa2',
+  bentokit: '#e3b458',
   opencode: '#b98ae0',
   antigravity: '#48c6d9',
   copilot: '#e88fa8',
@@ -56,6 +58,48 @@ interface ProjectEntry {
   styleUrl: './board-page.scss',
 })
 export class BoardPage {
+  protected readonly exportChoices = signal<ChatGptExportChoice[]>([]);
+  protected readonly exportSelection = signal('');
+  private pendingExportJson = '';
+  protected async confirmExport(): Promise<void> {
+    try {
+      await this.commands.stageChatgptExport(
+        this.pendingExportJson,
+        this.exportSelection() || null,
+      );
+      this.cancelExport();
+      await this.store.refresh();
+    } catch (e) {
+      this.previewError.set(String(e));
+    }
+  }
+  protected cancelExport(): void {
+    this.pendingExportJson = '';
+    this.exportSelection.set('');
+    this.exportChoices.set([]);
+  }
+  protected async importChatgpt(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > 128 * 1024 * 1024)
+        throw new Error('Use a conversation JSON export smaller than 128 MiB');
+      this.pendingExportJson = await file.text();
+      const choices = await this.commands.inspectChatgptExport(this.pendingExportJson);
+      if (choices.length === 1) {
+        this.exportSelection.set(choices[0].id);
+        await this.confirmExport();
+      } else {
+        this.exportChoices.set(choices);
+        this.exportSelection.set('');
+      }
+    } catch (e) {
+      this.previewError.set(String(e));
+    } finally {
+      input.value = '';
+    }
+  }
   protected readonly store = inject(BoardStore);
   private readonly commands = inject(PortalCommands);
 
@@ -152,7 +196,7 @@ export class BoardPage {
     const q = this.projectFilter().trim().toLowerCase();
     if (!q) return this.projects();
     return this.projects().filter(
-      (p) => p.label.toLowerCase().includes(q) || (p.path ?? '').toLowerCase().includes(q)
+      (p) => p.label.toLowerCase().includes(q) || (p.path ?? '').toLowerCase().includes(q),
     );
   });
 
@@ -160,7 +204,7 @@ export class BoardPage {
   protected readonly activeId = computed(() => this.selectedId() ?? this.projects()[0]?.id ?? null);
 
   protected readonly activeEntry = computed<ProjectEntry | null>(
-    () => this.projects().find((p) => p.id === this.activeId()) ?? null
+    () => this.projects().find((p) => p.id === this.activeId()) ?? null,
   );
 
   /**
@@ -215,7 +259,7 @@ export class BoardPage {
 
   /** True while dragging and at least one idle agent accepts the drop. */
   protected readonly idleHasActiveDrop = computed(() =>
-    this.idleTargets().some((t) => this.canDropInto(t.agentId))
+    this.idleTargets().some((t) => this.canDropInto(t.agentId)),
   );
 
   constructor() {
@@ -380,13 +424,13 @@ export class BoardPage {
     const source = this.dragSource();
     if (!source || source === targetAgent) return false;
     return (this.store.board()?.feasibility ?? []).some(
-      (f) => f.source === source && f.target === targetAgent && (f.native || f.brief)
+      (f) => f.source === source && f.target === targetAgent && (f.native || f.brief),
     );
   }
 
   private feasibilityFor(source: string, target: string) {
     return (this.store.board()?.feasibility ?? []).find(
-      (f) => f.source === source && f.target === target
+      (f) => f.source === source && f.target === target,
     );
   }
 
@@ -451,7 +495,7 @@ export class BoardPage {
       const session = await this.commands.getSessionPreview(
         summary.agentId,
         summary.nativeId,
-        summary.storePath
+        summary.storePath,
       );
       this.preview.set(session);
     } catch (e) {

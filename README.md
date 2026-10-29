@@ -18,6 +18,8 @@ background session titling) — your sessions are never sent to any cloud servic
 | Claude Code | ✓ | ✓ | JSONL transcripts |
 | Claude Cowork | ✓ | — | Local audit logs + experimental remote cache reader |
 | Codex CLI | ✓ | ✓ | JSONL per session |
+| BentoKit Core | ✓ | Protocol v1 required | [Source and native destination support](docs/bentokit-core-migrations.md) |
+| ChatGPT conversation JSON | ✓ | — | Selected conversation only; visible branch and provenance |
 | OpenCode | ✓ | ✓ | |
 | Antigravity (Gemini) | ✓ | — | protobuf + SQLite summaries |
 | GitHub Copilot | ✓ | — | VS Code chat sessions |

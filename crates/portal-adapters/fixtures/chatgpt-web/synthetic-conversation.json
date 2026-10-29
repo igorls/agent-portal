@@ -1,0 +1,11 @@
+{
+  "id": "synthetic-chatgpt-portability-test",
+  "title": "Synthetic fixture — not captured from ChatGPT online",
+  "current_node": "answer-current",
+  "mapping": {
+    "root": {"id":"root","parent":null,"children":["question"],"message":null},
+    "question": {"id":"question","parent":"root","children":["answer-old","answer-current"],"message":{"id":"user-original","author":{"role":"user"},"create_time":1793221200,"content":{"content_type":"multimodal_text","parts":["Synthetic question\nPreserve this exact text.",{"content_type":"image_asset_pointer","asset_pointer":"synthetic-image-reference"}]},"metadata":{"attachments":[{"id":"synthetic-file","name":"fixture.txt"}]}}},
+    "answer-old": {"id":"answer-old","parent":"question","children":[],"message":{"id":"assistant-old","author":{"role":"assistant"},"content":{"content_type":"text","parts":["Alternate branch fixture"]}}},
+    "answer-current": {"id":"answer-current","parent":"question","children":[],"message":{"id":"assistant-original","author":{"role":"assistant"},"create_time":1793221205,"content":{"content_type":"text","parts":["Selected branch fixture."]},"metadata":{"model_slug":"synthetic-model","content_references":[{"type":"synthetic-citation"}]}}}
+  }
+}

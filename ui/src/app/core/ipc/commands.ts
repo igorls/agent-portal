@@ -12,6 +12,10 @@ import type { MigrationResult } from './gen/MigrationResult';
 import type { NamingReport } from './gen/NamingReport';
 import type { OllamaStatus } from './gen/OllamaStatus';
 import type { UndoReport } from './gen/UndoReport';
+import type { MigrationDestination } from './gen/MigrationDestination';
+import type { DestinationChoices } from './gen/DestinationChoices';
+import type { SessionSummary } from './gen/SessionSummary';
+import type { ChatGptExportChoice } from './gen/ChatGptExportChoice';
 
 export type MigrationMode = 'native' | 'compacted_native' | 'brief';
 
@@ -72,7 +76,7 @@ export class PortalCommands {
     sourceNativeId: string,
     targetAgent: string,
     mode: MigrationMode,
-    opts: { enhance?: boolean; sourceStorePath?: string } = {},
+    opts: { enhance?: boolean; sourceStorePath?: string; destination?: MigrationDestination } = {},
   ): Promise<DryRunReport> {
     return this.tauri.invoke<DryRunReport>('plan_migration', {
       sourceAgent,
@@ -81,11 +85,28 @@ export class PortalCommands {
       targetAgent,
       mode,
       enhance: opts.enhance ?? false,
+      destination: opts.destination ?? null,
     });
   }
 
   executeMigration(planId: string): Promise<MigrationResult> {
     return this.tauri.invoke<MigrationResult>('execute_migration', { planId });
+  }
+
+  recoverableMigrations(): Promise<DryRunReport[]> {
+    return this.tauri.invoke<DryRunReport[]>('recoverable_migrations');
+  }
+
+  stageChatgptExport(json: string, conversationId: string | null = null): Promise<SessionSummary> {
+    return this.tauri.invoke<SessionSummary>('stage_chatgpt_export', { json, conversationId });
+  }
+
+  inspectChatgptExport(json: string): Promise<ChatGptExportChoice[]> {
+    return this.tauri.invoke<ChatGptExportChoice[]>('inspect_chatgpt_export', { json });
+  }
+
+  migrationDestinations(agentId: string): Promise<DestinationChoices> {
+    return this.tauri.invoke<DestinationChoices>('migration_destinations', { agentId });
   }
 
   launchSession(agentId: string, nativeId: string, cwd: string): Promise<void> {

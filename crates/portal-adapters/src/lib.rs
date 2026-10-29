@@ -3,6 +3,8 @@
 //! conformance suite pass.
 
 pub mod antigravity;
+pub mod bentokit;
+pub mod chatgpt_web;
 pub mod claude_code;
 pub mod claude_cowork;
 pub mod codex;
@@ -22,6 +24,8 @@ pub fn builtin_adapters() -> Vec<Arc<dyn AgentAdapter>> {
         Arc::new(claude_code::ClaudeCodeAdapter),
         Arc::new(claude_cowork::ClaudeCoworkAdapter),
         Arc::new(codex::CodexAdapter),
+        Arc::new(bentokit::BentoKitAdapter),
+        Arc::new(chatgpt_web::ChatGptWebAdapter),
         Arc::new(opencode::OpenCodeAdapter),
         Arc::new(antigravity::AntigravityAdapter),
         Arc::new(copilot::CopilotAdapter),

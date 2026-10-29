@@ -14,8 +14,8 @@ use crate::error::{PortalError, Result};
 use crate::ir::{tool_args_text, tool_output_text, Block, CanonicalSession};
 use crate::migration::ledger::{Ledger, LedgerEntry};
 use crate::migration::types::{
-    ArtifactKind, BlockCensus, DryRunReport, MigrationKind, MigrationResult, UndoReport,
-    VerifyGrade, WriteOptions, WrittenArtifact,
+    ArtifactKind, BlockCensus, DryRunReport, MigrationDestination, MigrationKind, MigrationResult,
+    UndoReport, VerifyGrade, WriteOptions, WrittenArtifact,
 };
 use crate::migration::{brief, compact, ollama, verify};
 use crate::util::paths::{atomic_write, quick_hash};
@@ -38,6 +38,7 @@ impl Default for BriefConfig {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PlannedMigration {
     pub report: DryRunReport,
     pub session: CanonicalSession,
@@ -46,6 +47,7 @@ pub struct PlannedMigration {
     pub kind: MigrationKind,
     /// Brief mode: the exact text to write (deterministic, possibly enriched).
     pub brief_text: Option<String>,
+    pub destination: Option<MigrationDestination>,
 }
 
 pub fn census(session: &CanonicalSession) -> BlockCensus {
@@ -100,6 +102,42 @@ pub fn plan(
     kind: MigrationKind,
     brief_cfg: &BriefConfig,
 ) -> Result<PlannedMigration> {
+    plan_with_destination(
+        source_adapter,
+        source_inst,
+        target_adapter,
+        target_inst,
+        locator,
+        kind,
+        brief_cfg,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn plan_with_destination(
+    source_adapter: &Arc<dyn AgentAdapter>,
+    source_inst: &Installation,
+    target_adapter: &Arc<dyn AgentAdapter>,
+    target_inst: &Installation,
+    locator: &SessionLocator,
+    kind: MigrationKind,
+    brief_cfg: &BriefConfig,
+    mut destination: Option<MigrationDestination>,
+) -> Result<PlannedMigration> {
+    let caps = target_adapter.capabilities_for(Some(target_inst));
+    let accepts_source = match caps.write_native {
+        crate::dto::SupportLevel::Full => true,
+        crate::dto::SupportLevel::Partial => {
+            target_adapter.accepts_native_from(source_adapter.id())
+        }
+        crate::dto::SupportLevel::None => false,
+    };
+    if kind != MigrationKind::Brief && !accepts_source {
+        return Err(PortalError::Other(
+            "Target does not support native imports from this source with its installed CLI".into(),
+        ));
+    }
     let mut session = source_adapter.read_session(source_inst, locator)?;
 
     let issues = session.validate();
@@ -209,15 +247,24 @@ pub fn plan(
     };
 
     let mut brief_text = None;
+    if let Some(destination) = destination.as_mut() {
+        destination.operation_id = Some(report.plan_id.clone());
+    }
     match kind {
         MigrationKind::Native | MigrationKind::CompactedNative => {
-            let write_plan = target_adapter.plan_write(target_inst, &session)?;
+            let write_plan =
+                target_adapter.plan_write_to(target_inst, &session, destination.as_ref())?;
             report
                 .predicted_losses
                 .extend(write_plan.predicted_losses.clone());
             report.target_path_hint = write_plan.target_path_hint;
             report.resume_preview = target_adapter
-                .resume_command(target_inst, "<new-session-id>", &session.workspace.cwd)
+                .resume_at(
+                    target_inst,
+                    "<new-session-id>",
+                    &session.workspace.cwd,
+                    destination.as_ref(),
+                )
                 .map(|c| c.display())
                 .unwrap_or_else(|_| "(resume command unavailable)".to_string());
         }
@@ -253,6 +300,7 @@ pub fn plan(
         kind,
         brief_text,
         session,
+        destination,
     })
 }
 
@@ -277,7 +325,21 @@ pub fn plan_native(
 
 /// Where a handoff document lands: inside the workspace, in a portal folder.
 fn brief_doc_path(cwd: &str, source_id: &str) -> std::path::PathBuf {
-    let short: String = source_id.chars().take(8).collect();
+    // Profile-qualified ids (e.g. BentoKit's agent/session) must neither
+    // become subdirectories nor collide just because the profile is the same.
+    let short: String = if source_id.contains(['/', '\\']) {
+        let prefix: String = source_id
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+            .take(8)
+            .collect();
+        format!(
+            "{prefix}-{}",
+            crate::util::paths::quick_hash(source_id.as_bytes())
+        )
+    } else {
+        source_id.chars().take(8).collect()
+    };
     std::path::Path::new(cwd)
         .join(".agent-portal")
         .join(format!("handoff-{short}.md"))
@@ -348,6 +410,7 @@ fn execute_brief(
         target_native_id: doc_path.display().to_string(),
         artifacts: vec![WrittenArtifact {
             kind: ArtifactKind::File,
+            session: None,
             path: doc_path.display().to_string(),
             backup: None,
             content_hash: Some(quick_hash(text.as_bytes())),
@@ -376,6 +439,7 @@ fn execute_native(
 ) -> Result<MigrationResult> {
     let opts = WriteOptions {
         title: planned.session.title.clone(),
+        destination: planned.destination.clone(),
     };
 
     let written = target_adapter.write_session(target_inst, &planned.session, &opts)?;
@@ -414,18 +478,19 @@ fn execute_native(
     };
 
     if verify_report.grade == VerifyGrade::Failed {
-        rollback(&written.artifacts);
+        rollback(&written.artifacts, target_adapter);
         return Err(PortalError::Other(format!(
             "verification failed, migration rolled back: {}",
             verify_report.diffs.join("; ")
         )));
     }
 
-    let migration_id = uuid::Uuid::now_v7().to_string();
-    let resume_command = target_adapter.resume_command(
+    let migration_id = planned.report.plan_id.clone();
+    let resume_command = target_adapter.resume_at(
         target_inst,
         &written.native_id,
         &planned.session.workspace.cwd,
+        planned.destination.as_ref(),
     )?;
 
     ledger.append(&LedgerEntry {
@@ -455,9 +520,14 @@ fn execute_native(
 
 /// Best-effort cleanup of a failed write: delete created files, restore
 /// backed-up index files. Never touches anything not in the artifact list.
-fn rollback(artifacts: &[WrittenArtifact]) {
+fn rollback(artifacts: &[WrittenArtifact], adapter: &Arc<dyn AgentAdapter>) {
     for artifact in artifacts {
         match artifact.kind {
+            ArtifactKind::AgentSession => {
+                if let Some(session) = &artifact.session {
+                    let _ = adapter.undo_session(session);
+                }
+            }
             ArtifactKind::File => {
                 let _ = std::fs::remove_file(&artifact.path);
             }
@@ -476,8 +546,31 @@ fn rollback(artifacts: &[WrittenArtifact]) {
 /// (the agent resumed and continued it) is left in place — losing that work to
 /// an undo would be worse than an orphaned session.
 pub fn undo(entry: &LedgerEntry, ledger: &Ledger, force: bool) -> Result<UndoReport> {
+    undo_with_adapter(entry, ledger, force, None)
+}
+
+pub fn undo_with_adapter(
+    entry: &LedgerEntry,
+    ledger: &Ledger,
+    force: bool,
+    adapter: Option<&Arc<dyn AgentAdapter>>,
+) -> Result<UndoReport> {
     let mut removed = Vec::new();
     let mut skipped = Vec::new();
+
+    for artifact in &entry.artifacts {
+        if artifact.kind == ArtifactKind::AgentSession {
+            match (adapter, artifact.session.as_ref()) {
+                (Some(adapter), Some(session)) => match adapter.undo_session(session) {
+                    Ok(()) => removed.push(format!("conversation {}", session.native_id)),
+                    Err(e) => skipped.push(format!("{}: {e}", session.native_id)),
+                },
+                _ => {
+                    skipped.push("Agent conversation requires its adapter for guarded undo".into())
+                }
+            }
+        }
+    }
 
     // Restore index appends first, then delete files.
     for artifact in &entry.artifacts {
@@ -524,7 +617,9 @@ pub fn undo(entry: &LedgerEntry, ledger: &Ledger, force: bool) -> Result<UndoRep
         }
     }
 
-    ledger.mark_undone(&entry.id)?;
+    if skipped.is_empty() {
+        ledger.mark_undone(&entry.id)?;
+    }
 
     Ok(UndoReport {
         migration_id: entry.id.clone(),

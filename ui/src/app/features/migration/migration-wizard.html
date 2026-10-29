@@ -13,6 +13,50 @@
   </div>
 
   @switch (stage()) {
+    @case ('destination') {
+      <div class="pane">
+        <h3>BentoKit destination</h3>
+        <p>
+          Import persistent history into an existing profile. The selected profile's model and
+          permissions apply.
+        </p>
+        <label
+          >Profile
+          <select [value]="targetProfile()" (change)="targetProfile.set($any($event.target).value)">
+            <option value="" disabled>Choose a profile</option>
+            @for (profile of destinations()?.profiles ?? []; track profile) {
+              <option [value]="profile">{{ profile }}</option>
+            }
+          </select>
+        </label>
+        <label
+          >Project
+          <select [value]="targetProject()" (change)="targetProject.set($any($event.target).value)">
+            <option value="">Profile's default workspace</option>
+            @for (project of destinations()?.projects ?? []; track project.id) {
+              <option [value]="project.id">{{ project.name }}</option>
+            }
+          </select>
+        </label>
+        <label
+          >Runtime URL for resume
+          <input
+            [value]="targetEndpoint()"
+            (input)="targetEndpoint.set($any($event.target).value)"
+          />
+        </label>
+        <p>
+          The runtime must serve this BentoKit data directory. Import itself runs locally and makes
+          no model calls.
+        </p>
+      </div>
+      <footer>
+        <button class="ghost" (click)="close()">Cancel</button>
+        <button class="primary" [disabled]="!targetProfile()" (click)="choose('native')">
+          Preview import
+        </button>
+      </footer>
+    }
     @case ('choose') {
       <div class="pane modes">
         <button class="mode-card" (click)="choose('native')">
@@ -198,6 +242,9 @@
         <div class="error-box">{{ error() }}</div>
       </div>
       <footer>
+        @if (report()) {
+          <button class="primary" (click)="execute()">Retry this migration</button>
+        }
         <button class="ghost" (click)="close()">Close</button>
       </footer>
     }

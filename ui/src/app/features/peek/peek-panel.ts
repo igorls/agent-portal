@@ -8,6 +8,7 @@ const AGENT_ACCENTS: Record<string, string> = {
   'claude-code': '#e8956a',
   'claude-cowork': '#d97757',
   codex: '#5bbfa2',
+  bentokit: '#e3b458',
   opencode: '#b98ae0',
   antigravity: '#48c6d9',
   copilot: '#e88fa8',
@@ -63,11 +64,11 @@ export class PeekPanel {
     [...this.allRows()]
       .filter((r) => !r.session.maybeLive)
       .sort((a, b) => (b.session.updatedAt ?? '').localeCompare(a.session.updatedAt ?? ''))
-      .slice(0, 6)
+      .slice(0, 6),
   );
 
   protected readonly agentCount = computed(
-    () => this.board()?.lanes.filter((l) => l.agent.installation).length ?? 0
+    () => this.board()?.lanes.filter((l) => l.agent.installation).length ?? 0,
   );
 
   constructor() {

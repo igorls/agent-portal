@@ -9,9 +9,13 @@
     </div>
     @if (!isEmpty()) {
       <div class="head-stats mono">
-        <span class="hs"><b>{{ activeCount() }}</b> active</span>
+        <span class="hs"
+          ><b>{{ activeCount() }}</b> active</span
+        >
         @if (undoneCount() > 0) {
-          <span class="hs muted"><b>{{ undoneCount() }}</b> undone</span>
+          <span class="hs muted"
+            ><b>{{ undoneCount() }}</b> undone</span
+          >
         }
       </div>
     }
@@ -85,7 +89,10 @@
                     <span class="grade" [class]="'g-' + entry.verifyGrade">{{
                       entry.verifyGrade
                     }}</span>
-                    <span class="ids mono" [title]="entry.sourceNativeId + ' → ' + entry.targetNativeId">
+                    <span
+                      class="ids mono"
+                      [title]="entry.sourceNativeId + ' → ' + entry.targetNativeId"
+                    >
                       {{ entry.sourceNativeId.slice(0, 8) }} →
                       {{ entry.targetNativeId.slice(0, 8) }}
                     </span>
@@ -124,6 +131,18 @@
         </div>
       }
     }
+  }
+
+  @if (recoverable().length) {
+    <section>
+      <h2>Interrupted BentoKit imports</h2>
+      @for (plan of recoverable(); track plan.planId) {
+        <p>{{ plan.sourceTitle ?? plan.sourceNativeId }} → {{ plan.targetPathHint }}</p>
+        <button (click)="recover(plan)" [disabled]="busy() === plan.planId">
+          Retry saved import
+        </button>
+      }
+    </section>
   }
 
   <section class="naming">
@@ -180,13 +199,16 @@
 
       <div class="stats">
         <div class="stat">
-          <span class="num">{{ n.recent.named }}</span><span class="cap">named</span>
+          <span class="num">{{ n.recent.named }}</span
+          ><span class="cap">named</span>
         </div>
         <div class="stat">
-          <span class="num">{{ n.recent.stale }}</span><span class="cap">stale</span>
+          <span class="num">{{ n.recent.stale }}</span
+          ><span class="cap">stale</span>
         </div>
         <div class="stat">
-          <span class="num">{{ n.recent.pending }}</span><span class="cap">pending</span>
+          <span class="num">{{ n.recent.pending }}</span
+          ><span class="cap">pending</span>
         </div>
         <div class="stat">
           <span class="num">{{ n.recent.total }}</span

@@ -2,6 +2,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatGptExportChoice {
+    pub id: String,
+    pub title: String,
+}
+
 /// Smoke DTO: proves the Rust -> ts-rs -> Angular typed IPC pipeline end to end.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]

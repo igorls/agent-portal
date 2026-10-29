@@ -34,6 +34,7 @@ pub struct AppState {
     plans: Mutex<HashMap<String, Arc<PlannedMigration>>>,
     /// Live state of the background naming worker, surfaced in the Activity view.
     naming: Mutex<NamingProgress>,
+    plan_dir: PathBuf,
     /// Hot board for instant metadata search (no per-keystroke SQLite deserialize).
     board: Mutex<Option<Arc<BoardSnapshot>>>,
     /// Live semantic indexer progress (Settings / status probes).
@@ -90,6 +91,7 @@ impl AppState {
             installations: Mutex::new(HashMap::new()),
             plans: Mutex::new(HashMap::new()),
             naming: Mutex::new(NamingProgress::default()),
+            plan_dir: app_data_dir.join("migration-plans"),
             board: Mutex::new(None),
             semantic: Mutex::new(SemanticProgress::default()),
             semantic_kick: AtomicBool::new(false),
@@ -251,16 +253,155 @@ impl AppState {
         }
     }
 
-    pub fn store_plan(&self, plan: PlannedMigration) -> Arc<PlannedMigration> {
+    pub fn store_plan(
+        &self,
+        plan: PlannedMigration,
+    ) -> portal_core::error::Result<Arc<PlannedMigration>> {
         let arc = Arc::new(plan);
         self.plans
             .lock()
             .unwrap()
             .insert(arc.report.plan_id.clone(), arc.clone());
-        arc
+        Ok(arc)
     }
 
-    pub fn take_plan(&self, plan_id: &str) -> Option<Arc<PlannedMigration>> {
-        self.plans.lock().unwrap().remove(plan_id)
+    pub fn take_plan(
+        &self,
+        plan_id: &str,
+    ) -> portal_core::error::Result<Option<Arc<PlannedMigration>>> {
+        if plan_id.is_empty()
+            || plan_id.len() > 64
+            || !plan_id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+        {
+            return Ok(None);
+        }
+        if let Some(plan) = self.plans.lock().unwrap().get(plan_id).cloned() {
+            if plan.target_agent == "bentokit" {
+                std::fs::create_dir_all(&self.plan_dir)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(
+                        &self.plan_dir,
+                        std::fs::Permissions::from_mode(0o700),
+                    )?;
+                }
+                let body = serde_json::to_vec(&*plan)
+                    .map_err(|e| portal_core::error::PortalError::Other(e.to_string()))?;
+                portal_core::util::paths::atomic_write(
+                    &self.plan_dir.join(format!("{plan_id}.json")),
+                    &body,
+                )?;
+            }
+            return Ok(Some(plan));
+        }
+        let path = self.plan_dir.join(format!("{plan_id}.json"));
+        if !path.exists() {
+            return Ok(None);
+        }
+        let bytes = std::fs::read(path)?;
+        Ok(Some(Arc::new(serde_json::from_slice(&bytes).map_err(
+            |e| portal_core::error::PortalError::Other(e.to_string()),
+        )?)))
+    }
+
+    pub fn finish_plan(&self, id: &str) {
+        self.plans.lock().unwrap().remove(id);
+        let _ = std::fs::remove_file(self.plan_dir.join(format!("{id}.json")));
+    }
+
+    pub fn recoverable_plans(&self) -> Vec<portal_core::migration::types::DryRunReport> {
+        let Ok(entries) = std::fs::read_dir(&self.plan_dir) else {
+            return vec![];
+        };
+        entries
+            .flatten()
+            .filter_map(|entry| {
+                let bytes = std::fs::read(entry.path()).ok()?;
+                let plan: PlannedMigration = serde_json::from_slice(&bytes).ok()?;
+                if self
+                    .ledger
+                    .get(&plan.report.plan_id)
+                    .ok()
+                    .flatten()
+                    .is_some()
+                {
+                    return None;
+                }
+                Some(plan.report)
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod recovery_tests {
+    use super::*;
+    use portal_core::adapter::SessionLocator;
+    use portal_core::dto::Installation;
+    use portal_core::migration::{engine, types::MigrationDestination};
+
+    #[test]
+    fn executed_import_plans_survive_restart_while_dry_runs_do_not_write_plans() {
+        let root =
+            std::env::temp_dir().join(format!("portal-plan-recovery-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let state = AppState::new(root.clone());
+        let source: Arc<dyn AgentAdapter> =
+            Arc::new(portal_adapters::claude_code::ClaudeCodeAdapter);
+        let target: Arc<dyn AgentAdapter> = Arc::new(portal_adapters::codex::CodexAdapter);
+        let source_inst = Installation {
+            cli_path: None,
+            version: None,
+            store_root: std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../crates/portal-adapters/fixtures/claude-code/v2.1/store")
+                .display()
+                .to_string(),
+        };
+        let target_inst = Installation {
+            cli_path: None,
+            version: None,
+            store_root: root.join("target").display().to_string(),
+        };
+        let mut plan = engine::plan_native(
+            &source,
+            &source_inst,
+            &target,
+            &target_inst,
+            &SessionLocator {
+                native_id: "11111111-1111-1111-1111-111111111111".into(),
+                store_path: None,
+            },
+        )
+        .unwrap();
+        plan.target_agent = "bentokit".into();
+        plan.destination = Some(MigrationDestination {
+            profile: "synthetic".into(),
+            project_id: None,
+            endpoint: None,
+            operation_id: Some(plan.report.plan_id.clone()),
+        });
+        let id = plan.report.plan_id.clone();
+        state.store_plan(plan).unwrap();
+        assert!(!root.join("migration-plans").exists());
+        state.take_plan(&id).unwrap().unwrap();
+        drop(state);
+        let restarted = AppState::new(root.clone());
+        assert_eq!(restarted.recoverable_plans().len(), 1);
+        let recovered = restarted.take_plan(&id).unwrap().unwrap();
+        assert_eq!(
+            recovered
+                .destination
+                .as_ref()
+                .unwrap()
+                .operation_id
+                .as_deref(),
+            Some(id.as_str())
+        );
+        assert!(restarted.take_plan("../escape").unwrap().is_none());
+        restarted.finish_plan(&id);
+        assert!(restarted.recoverable_plans().is_empty());
+        drop(restarted);
+        let _ = std::fs::remove_dir_all(root);
     }
 }

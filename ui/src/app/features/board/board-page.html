@@ -1,5 +1,14 @@
 <div class="toolbar">
-  <button class="refresh" (click)="store.refresh()" [disabled]="store.refreshing()" title="Rescan agent stores">
+  <label class="refresh"
+    >Import ChatGPT export
+    <input type="file" accept="application/json,.json" (change)="importChatgpt($event)" hidden />
+  </label>
+  <button
+    class="refresh"
+    (click)="store.refresh()"
+    [disabled]="store.refreshing()"
+    title="Rescan agent stores"
+  >
     <span class="icon" [class.spin]="store.refreshing()">⟳</span>
     {{ store.refreshing() ? 'Scanning' : 'Refresh' }}
   </button>
@@ -36,6 +45,24 @@
   }
 </div>
 
+@if (exportChoices().length) {
+  <section class="toolbar">
+    <label
+      >Choose a conversation from your export
+      <select [value]="exportSelection()" (change)="exportSelection.set($any($event.target).value)">
+        <option value="" disabled>Select a conversation</option>
+        @for (choice of exportChoices(); track choice.id) {
+          <option [value]="choice.id">{{ choice.title }}</option>
+        }
+      </select>
+    </label>
+    <button [disabled]="!exportSelection()" (click)="confirmExport()">
+      Add selected conversation
+    </button>
+    <button (click)="cancelExport()">Cancel</button>
+  </section>
+}
+
 @if (store.board(); as b) {
   @if (b.lanes.length > 1) {
     <div class="agent-filter">
@@ -45,7 +72,11 @@
           [class.off]="isAgentHidden(lane.agent.id)"
           [style.--agent]="accent(lane.agent.id)"
           (click)="toggleAgent(lane.agent.id)"
-          [title]="isAgentHidden(lane.agent.id) ? 'Show ' + lane.agent.displayName : 'Hide ' + lane.agent.displayName"
+          [title]="
+            isAgentHidden(lane.agent.id)
+              ? 'Show ' + lane.agent.displayName
+              : 'Hide ' + lane.agent.displayName
+          "
         >
           <span class="chip-dot"></span>
           <span class="chip-name">{{ lane.agent.displayName }}</span>
@@ -107,11 +138,7 @@
     </aside>
 
     <!-- draggable divider to resize the rail -->
-    <div
-      class="rail-resizer"
-      (mousedown)="startRailResize($event)"
-      title="Drag to resize"
-    ></div>
+    <div class="rail-resizer" (mousedown)="startRailResize($event)" title="Drag to resize"></div>
 
     <!-- ── project stage (detail) ────────────────────────────────────── -->
     <section class="project-stage">
@@ -136,7 +163,9 @@
               class="track"
               [style.--agent]="accent(track.agentId)"
               [class.target-ok]="canDropInto(track.agentId)"
-              [class.target-off]="dragSource() && dragSource() !== track.agentId && !canDropInto(track.agentId)"
+              [class.target-off]="
+                dragSource() && dragSource() !== track.agentId && !canDropInto(track.agentId)
+              "
               [class.is-source]="dragSource() === track.agentId"
             >
               <header class="track-header">
@@ -194,7 +223,10 @@
 
                     <div class="card-top">
                       @if (s.maybeLive) {
-                        <span class="live-dot" title="the agent may be writing to this session now"></span>
+                        <span
+                          class="live-dot"
+                          title="the agent may be writing to this session now"
+                        ></span>
                       }
                       <span class="card-title">{{ s.title ?? s.nativeId.slice(0, 8) }}</span>
                     </div>
@@ -226,10 +258,7 @@
 
           <!-- Other installed agents: one shared column of compact drop zones. -->
           @if (idleTargets().length > 0) {
-            <section
-              class="idle-rail"
-              [class.has-target]="idleHasActiveDrop()"
-            >
+            <section class="idle-rail" [class.has-target]="idleHasActiveDrop()">
               <header class="idle-rail-head">
                 <span class="idle-rail-title">Also installed</span>
                 <span class="idle-rail-sub mono">drop to migrate</span>

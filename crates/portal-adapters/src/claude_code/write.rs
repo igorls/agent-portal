@@ -246,6 +246,7 @@ pub fn write_session(
 
     let artifacts = vec![WrittenArtifact {
         kind: ArtifactKind::File,
+        session: None,
         path: path.display().to_string(),
         backup: None,
         content_hash: Some(quick_hash(content.as_bytes())),

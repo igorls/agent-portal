@@ -683,6 +683,7 @@ fn collect_dir_artifacts_rec(dir: &Path, out: &mut Vec<WrittenArtifact>) -> Resu
         } else if path.is_file() {
             let bytes = std::fs::read(&path)?;
             out.push(WrittenArtifact {
+                session: None,
                 kind: ArtifactKind::File,
                 path: path.display().to_string(),
                 backup: None,

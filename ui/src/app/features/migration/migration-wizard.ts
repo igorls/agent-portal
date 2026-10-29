@@ -4,6 +4,7 @@ import type { DryRunReport } from '../../core/ipc/gen/DryRunReport';
 import type { MigrationResult } from '../../core/ipc/gen/MigrationResult';
 import type { OllamaStatus } from '../../core/ipc/gen/OllamaStatus';
 import type { SessionSummary } from '../../core/ipc/gen/SessionSummary';
+import type { DestinationChoices } from '../../core/ipc/gen/DestinationChoices';
 
 export interface MigrationRequest {
   source: SessionSummary;
@@ -13,7 +14,7 @@ export interface MigrationRequest {
   brief: boolean;
 }
 
-type Stage = 'choose' | 'planning' | 'review' | 'executing' | 'done' | 'error';
+type Stage = 'destination' | 'choose' | 'planning' | 'review' | 'executing' | 'done' | 'error';
 
 @Component({
   selector: 'app-migration-wizard',
@@ -32,6 +33,10 @@ export class MigrationWizard {
   protected readonly result = signal<MigrationResult | null>(null);
   protected readonly error = signal<string | null>(null);
   protected readonly launching = signal(false);
+  protected readonly destinations = signal<DestinationChoices | null>(null);
+  protected readonly targetProfile = signal('');
+  protected readonly targetProject = signal('');
+  protected readonly targetEndpoint = signal('ws://localhost:10001/api/ws');
 
   protected readonly ollama = signal<OllamaStatus | null>(null);
   protected readonly enhance = signal(false);
@@ -79,6 +84,17 @@ export class MigrationWizard {
 
   private async start(): Promise<void> {
     const req = this.request();
+    if (req.targetAgent === 'bentokit') {
+      this.stage.set('planning');
+      try {
+        this.destinations.set(await this.commands.migrationDestinations(req.targetAgent));
+        this.stage.set('destination');
+      } catch (e) {
+        this.error.set(String(e));
+        this.stage.set('error');
+      }
+      return;
+    }
     // Probe Ollama in the background so the brief toggle can appear.
     this.commands
       .checkOllama()
@@ -116,7 +132,20 @@ export class MigrationWizard {
         req.source.nativeId,
         req.targetAgent,
         mode,
-        { enhance: mode === 'brief' && this.enhance(), sourceStorePath: req.source.storePath },
+        {
+          enhance: mode === 'brief' && this.enhance(),
+          sourceStorePath: req.source.storePath,
+          ...(req.targetAgent === 'bentokit'
+            ? {
+                destination: {
+                  profile: this.targetProfile(),
+                  projectId: this.targetProject() || null,
+                  endpoint: this.targetEndpoint() || null,
+                  operationId: null,
+                },
+              }
+            : {}),
+        },
       );
       this.report.set(report);
       this.stage.set('review');

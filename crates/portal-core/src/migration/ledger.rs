@@ -30,16 +30,24 @@ pub struct LedgerEntry {
 
 pub struct Ledger {
     path: PathBuf,
+    mutation: std::sync::Mutex<()>,
 }
 
 impl Ledger {
     pub fn new(app_data_dir: PathBuf) -> Self {
         Self {
             path: app_data_dir.join("migrations.jsonl"),
+            mutation: std::sync::Mutex::new(()),
         }
     }
 
     pub fn append(&self, entry: &LedgerEntry) -> Result<()> {
+        let _guard = self.mutation.lock().map_err(|_| {
+            crate::error::PortalError::Other("migration ledger lock unavailable".into())
+        })?;
+        if self.get(&entry.id)?.is_some() {
+            return Ok(());
+        }
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -72,6 +80,9 @@ impl Ledger {
     /// Flip an entry's `undone` flag. The ledger is append-only in spirit but
     /// small, so a full rewrite is fine.
     pub fn mark_undone(&self, id: &str) -> Result<()> {
+        let _guard = self.mutation.lock().map_err(|_| {
+            crate::error::PortalError::Other("migration ledger lock unavailable".into())
+        })?;
         let mut entries = self.list()?;
         for entry in &mut entries {
             if entry.id == id {

@@ -24,11 +24,12 @@ impl AgentRegistry {
     }
 
     pub fn descriptor(&self, adapter: &dyn AgentAdapter, env: &HostEnv) -> AgentDescriptor {
+        let installation = adapter.detect(env);
         AgentDescriptor {
             id: adapter.id().to_string(),
             display_name: adapter.display_name().to_string(),
-            capabilities: adapter.capabilities(),
-            installation: adapter.detect(env),
+            capabilities: adapter.capabilities_for(installation.as_ref()),
+            installation,
         }
     }
 
@@ -72,24 +73,25 @@ impl AgentRegistry {
 
     /// Ordered (source, target) migration feasibility over detected agents.
     pub fn feasibility(&self, env: &HostEnv) -> Vec<PairFeasibility> {
-        let detected: Vec<(&Arc<dyn AgentAdapter>, bool)> = self
-            .adapters
-            .iter()
-            .map(|a| (a, a.detect(env).is_some()))
-            .collect();
+        let detected: Vec<(&Arc<dyn AgentAdapter>, Option<crate::dto::Installation>)> =
+            self.adapters.iter().map(|a| (a, a.detect(env))).collect();
 
         let mut out = Vec::new();
         for (source, source_detected) in &detected {
-            let source_caps = source.capabilities();
-            let can_read = *source_detected && source_caps.read != SupportLevel::None;
+            let source_caps = source.capabilities_for(source_detected.as_ref());
+            let can_read = source_detected.is_some() && source_caps.read != SupportLevel::None;
             for (target, target_detected) in &detected {
                 if source.id() == target.id() {
                     continue;
                 }
-                let target_caps = target.capabilities();
-                let native =
-                    can_read && *target_detected && target.accepts_native_from(source.id());
-                let brief = can_read && *target_detected && target_caps.launch_new;
+                let target_caps = target.capabilities_for(target_detected.as_ref());
+                let accepts_source = match target_caps.write_native {
+                    SupportLevel::Full => true,
+                    SupportLevel::Partial => target.accepts_native_from(source.id()),
+                    SupportLevel::None => false,
+                };
+                let native = can_read && target_detected.is_some() && accepts_source;
+                let brief = can_read && target_detected.is_some() && target_caps.launch_new;
                 out.push(PairFeasibility {
                     source: source.id().to_string(),
                     target: target.id().to_string(),

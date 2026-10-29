@@ -236,6 +236,7 @@ pub fn write_session(
 
     let mut artifacts = vec![WrittenArtifact {
         kind: ArtifactKind::File,
+        session: None,
         path: path.display().to_string(),
         backup: None,
         content_hash: Some(quick_hash(content.as_bytes())),
@@ -265,6 +266,7 @@ pub fn write_session(
             file.sync_all()?;
             artifacts.push(WrittenArtifact {
                 kind: ArtifactKind::IndexAppendLine,
+                session: None,
                 path: index_path.display().to_string(),
                 backup: Some(backup.display().to_string()),
                 content_hash: None,
@@ -274,6 +276,7 @@ pub fn write_session(
             atomic_write(&index_path, line.as_bytes())?;
             artifacts.push(WrittenArtifact {
                 kind: ArtifactKind::File,
+                session: None,
                 path: index_path.display().to_string(),
                 backup: None,
                 content_hash: Some(quick_hash(line.as_bytes())),

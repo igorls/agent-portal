@@ -75,7 +75,7 @@ pub fn compare(source: &CanonicalSession, written: &CanonicalSession) -> VerifyR
     // pairing in the target), so exclude them from the source side too.
     let dropped = source.unanswered_tool_calls();
     let a = normalize(source, &dropped);
-    let b = normalize(written, &[]);
+    let b = normalize(written, &written.unanswered_tool_calls());
 
     let mut diffs = Vec::new();
     if a.len() != b.len() {
